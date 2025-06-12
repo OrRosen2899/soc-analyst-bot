@@ -20,9 +20,9 @@ Your personal Security Operations Center analyst powered by AI, running locally 
 
 ```bash
 # Download and run the installer
-curl -fsSL https://raw.githubusercontent.com/yourusername/soc-analyst-bot/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/OrRosen2899/soc-analyst-bot/main/install.sh | bash
 
 # Or manual installation:
-wget https://raw.githubusercontent.com/yourusername/soc-analyst-bot/main/install.sh
+wget https://raw.githubusercontent.com/OrRosen2899/soc-analyst-bot/main/install.sh
 chmod +x install.sh
 ./install.sh
