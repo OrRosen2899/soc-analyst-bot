@@ -103,13 +103,13 @@ pip install --upgrade pip
 
 # Download the main bot script from GitHub
 print_status "Downloading bot application..."
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/soc-analyst-bot/main/soc_analyst_bot.py -o soc_analyst_bot.py
+curl -fsSL https://raw.githubusercontent.com/OrRosen2899/soc-analyst-bot/main/soc_analyst_bot.py -o soc_analyst_bot.py
 
 # Download requirements.txt
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/soc-analyst-bot/main/requirements.txt -o requirements.txt
+curl -fsSL https://raw.githubusercontent.com/OrRosen2899/soc-analyst-bot/main/requirements.txt -o requirements.txt
 
 # Download environment template
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/soc-analyst-bot/main/.env.template -o .env.template
+curl -fsSL https://raw.githubusercontent.com/OrRosen2899/soc-analyst-bot/main/.env.template -o .env.template
 cp .env.template .env
 
 # Install Python dependencies
