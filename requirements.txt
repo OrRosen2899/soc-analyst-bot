@@ -1,0 +1,8 @@
+python-telegram-bot==20.7
+aiohttp==3.9.1
+aiofiles==23.2.1
+requests==2.31.0
+python-magic==0.4.27
+yara-python==4.5.0
+pathlib==1.0.1
+python-dotenv==1.0.0
