@@ -1,763 +1,553 @@
 #!/usr/bin/env python3
 """
-Private SOC Analyst Bot
-A Telegram-based security analysis bot using Ollama for AI analysis
-Compatible with Raspberry Pi 4
+SOC Analyst Bot - Enhanced Security Analysis Bot for Family Network
+With Improved .env Loading
 """
 
 import os
-import asyncio
+import sys
 import logging
+import asyncio
 import hashlib
-import requests
-import json
-import magic
-import yara
 import re
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlparse
-from telegram import Update, Document
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.constants import ParseMode
-import aiohttp
-import aiofiles
+import json
+import subprocess
+import urllib.parse
 from pathlib import Path
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Union
+import requests
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from dotenv import load_dotenv, find_dotenv
 
 # Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    format='%(asctime)s - **%(name)s** - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 
-class ThreatIntelligence:
-    """Handle threat intelligence lookups using free APIs"""
+def load_environment_variables():
+    """
+    Load environment variables from .env file with multiple fallback methods
+    """
+    logger.info("🔍 Attempting to load environment variables...")
     
-    def __init__(self):
-        self.vt_api_key = os.getenv('VIRUSTOTAL_API_KEY', '')
-        self.abuseipdb_key = os.getenv('ABUSEIPDB_API_KEY', '')
-        self.session = None
-    
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
-    
-    async def check_hash(self, file_hash: str) -> Dict:
-        """Check file hash against VirusTotal"""
-        if not self.vt_api_key:
-            return {"error": "VirusTotal API key not configured"}
+    # Method 1: Try to find .env file automatically
+    env_path = find_dotenv()
+    if env_path:
+        logger.info(f"✅ Found .env file at: {env_path}")
+        load_dotenv(env_path, override=True)
+    else:
+        # Method 2: Try current directory
+        current_dir = Path(__file__).parent
+        env_file = current_dir / '.env'
         
-        url = f"https://www.virustotal.com/vtapi/v2/file/report"
-        params = {
-            'apikey': self.vt_api_key,
-            'resource': file_hash
-        }
-        
-        try:
-            async with self.session.get(url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        'positives': data.get('positives', 0),
-                        'total': data.get('total', 0),
-                        'scan_date': data.get('scan_date', ''),
-                        'permalink': data.get('permalink', ''),
-                        'found': data.get('response_code') == 1
-                    }
-        except Exception as e:
-            logger.error(f"VirusTotal hash check error: {e}")
-        
-        return {"error": "Failed to check hash"}
-    
-    async def check_url(self, url: str) -> Dict:
-        """Check URL reputation"""
-        if not self.vt_api_key:
-            return {"error": "VirusTotal API key not configured"}
-        
-        vt_url = "https://www.virustotal.com/vtapi/v2/url/report"
-        params = {
-            'apikey': self.vt_api_key,
-            'resource': url
-        }
-        
-        try:
-            async with self.session.get(vt_url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {
-                        'positives': data.get('positives', 0),
-                        'total': data.get('total', 0),
-                        'scan_date': data.get('scan_date', ''),
-                        'permalink': data.get('permalink', ''),
-                        'found': data.get('response_code') == 1
-                    }
-        except Exception as e:
-            logger.error(f"URL check error: {e}")
-        
-        return {"error": "Failed to check URL"}
-    
-    async def check_ip(self, ip: str) -> Dict:
-        """Check IP reputation using AbuseIPDB"""
-        if not self.abuseipdb_key:
-            return {"error": "AbuseIPDB API key not configured"}
-        
-        url = "https://api.abuseipdb.com/api/v2/check"
-        headers = {
-            'Key': self.abuseipdb_key,
-            'Accept': 'application/json'
-        }
-        params = {
-            'ipAddress': ip,
-            'maxAgeInDays': 90
-        }
-        
-        try:
-            async with self.session.get(url, headers=headers, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get('data', {})
-        except Exception as e:
-            logger.error(f"IP check error: {e}")
-        
-        return {"error": "Failed to check IP"}
-
-class FileAnalyzer:
-    """Analyze uploaded files for threats"""
-    
-    def __init__(self):
-        self.upload_dir = Path("uploads")
-        self.upload_dir.mkdir(exist_ok=True)
-        self.yara_rules = self._load_yara_rules()
-    
-    def _load_yara_rules(self):
-        """Load YARA rules for malware detection"""
-        try:
-            # Basic YARA rules - you can expand this
-            rules_content = """
-            rule Suspicious_Executable
-            {
-                meta:
-                    description = "Detects suspicious executable patterns"
-                strings:
-                    $mz = { 4D 5A }
-                    $pe = "PE"
-                    $suspicious1 = "cmd.exe" nocase
-                    $suspicious2 = "powershell" nocase
-                    $suspicious3 = "CreateProcess" nocase
-                condition:
-                    $mz at 0 and $pe and any of ($suspicious*)
-            }
+        if env_file.exists():
+            logger.info(f"✅ Found .env file in script directory: {env_file}")
+            load_dotenv(env_file, override=True)
+        else:
+            # Method 3: Try working directory
+            working_dir = Path.cwd()
+            env_file = working_dir / '.env'
             
-            rule Suspicious_Script
-            {
-                meta:
-                    description = "Detects suspicious script patterns"
-                strings:
-                    $js1 = "eval(" nocase
-                    $js2 = "unescape(" nocase
-                    $ps1 = "Invoke-Expression" nocase
-                    $ps2 = "DownloadString" nocase
-                    $py1 = "exec(" nocase
-                    $py2 = "__import__" nocase
-                condition:
-                    any of them
-            }
-            """
-            return yara.compile(source=rules_content)
-        except Exception as e:
-            logger.error(f"Failed to load YARA rules: {e}")
-            return None
+            if env_file.exists():
+                logger.info(f"✅ Found .env file in working directory: {env_file}")
+                load_dotenv(env_file, override=True)
+            else:
+                # Method 4: Try parent directories
+                for parent in Path(__file__).parents:
+                    env_file = parent / '.env'
+                    if env_file.exists():
+                        logger.info(f"✅ Found .env file in parent directory: {env_file}")
+                        load_dotenv(env_file, override=True)
+                        break
+                else:
+                    logger.error("❌ No .env file found in any location")
+                    logger.error("📁 Searched locations:")
+                    logger.error(f"  - Script directory: {Path(__file__).parent}")
+                    logger.error(f"  - Working directory: {Path.cwd()}")
+                    logger.error(f"  - Parent directories of script")
+                    return False
     
-    async def analyze_file(self, file_path: str) -> Dict:
-        """Comprehensive file analysis"""
-        try:
-            # Get file info
-            file_stats = os.stat(file_path)
-            file_size = file_stats.st_size
-            
-            # Calculate hashes
-            hashes = await self._calculate_hashes(file_path)
-            
-            # Get file type
-            file_type = magic.from_file(file_path, mime=True)
-            
-            # YARA scan
-            yara_matches = []
-            if self.yara_rules:
-                try:
-                    matches = self.yara_rules.match(file_path)
-                    yara_matches = [match.rule for match in matches]
-                except Exception as e:
-                    logger.error(f"YARA scan error: {e}")
-            
-            # Basic suspicious indicators
-            suspicious_indicators = await self._check_suspicious_indicators(file_path, file_type)
-            
-            return {
-                'filename': os.path.basename(file_path),
-                'size': file_size,
-                'type': file_type,
-                'hashes': hashes,
-                'yara_matches': yara_matches,
-                'suspicious_indicators': suspicious_indicators,
-                'risk_score': self._calculate_risk_score(yara_matches, suspicious_indicators)
-            }
-            
-        except Exception as e:
-            logger.error(f"File analysis error: {e}")
-            return {"error": f"Analysis failed: {str(e)}"}
+    # Verify critical environment variables
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set")
+        logger.error("💡 Make sure your .env file contains: TELEGRAM_BOT_TOKEN=your_token_here")
+        return False
     
-    async def _calculate_hashes(self, file_path: str) -> Dict:
-        """Calculate MD5, SHA1, and SHA256 hashes"""
-        hashes = {}
-        hash_funcs = {
-            'md5': hashlib.md5(),
-            'sha1': hashlib.sha1(),
-            'sha256': hashlib.sha256()
-        }
-        
-        async with aiofiles.open(file_path, 'rb') as f:
-            async for chunk in self._file_chunks(f):
-                for hash_func in hash_funcs.values():
-                    hash_func.update(chunk)
-        
-        return {name: hash_func.hexdigest() for name, hash_func in hash_funcs.items()}
+    logger.info("✅ Environment variables loaded successfully")
+    logger.info(f"🔑 Token length: {len(token)} characters")
     
-    async def _file_chunks(self, file_obj, chunk_size=8192):
-        """Async generator for file chunks"""
-        while True:
-            chunk = await file_obj.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+    # Log other optional variables (without showing values)
+    optional_vars = {
+        'AUTHORIZED_USERS': 'Authorized user IDs',
+        'VIRUSTOTAL_API_KEY': 'VirusTotal API key',
+        'ABUSEIPDB_API_KEY': 'AbuseIPDB API key',
+        'OLLAMA_BASE_URL': 'Ollama base URL',
+        'OLLAMA_MODEL': 'Ollama model name'
+    }
     
-    async def _check_suspicious_indicators(self, file_path: str, file_type: str) -> List[str]:
-        """Check for suspicious file indicators"""
-        indicators = []
-        
-        # Check file extension vs MIME type mismatch
-        file_ext = Path(file_path).suffix.lower()
-        if file_ext in ['.exe', '.scr', '.bat', '.cmd'] and 'executable' not in file_type:
-            indicators.append("File extension/MIME type mismatch")
-        
-        # Check for double extensions
-        if file_path.count('.') > 1:
-            indicators.append("Multiple file extensions detected")
-        
-        # Check for suspicious file names
-        suspicious_names = ['invoice', 'document', 'photo', 'update', 'patch']
-        filename_lower = os.path.basename(file_path).lower()
-        if any(name in filename_lower for name in suspicious_names) and file_ext in ['.exe', '.scr']:
-            indicators.append("Suspicious filename for executable")
-        
-        return indicators
+    for var, description in optional_vars.items():
+        value = os.getenv(var)
+        if value:
+            logger.info(f"✅ {description}: Found")
+        else:
+            logger.info(f"ℹ️ {description}: Not set (optional)")
     
-    def _calculate_risk_score(self, yara_matches: List, suspicious_indicators: List) -> int:
-        """Calculate risk score (0-100)"""
-        score = 0
-        score += len(yara_matches) * 30
-        score += len(suspicious_indicators) * 15
-        return min(score, 100)
-
-class OllamaAnalyzer:
-    """Interface with Ollama for AI-powered analysis"""
-    
-    def __init__(self, model_name: str = "llama3.2"):
-        self.model_name = model_name
-        self.base_url = "http://localhost:11434"
-    
-    async def analyze_with_ai(self, analysis_data: Dict, artifact_type: str) -> str:
-        """Get AI analysis and recommendations"""
-        prompt = self._build_analysis_prompt(analysis_data, artifact_type)
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                payload = {
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "stream": False
-                }
-                
-                async with session.post(f"{self.base_url}/api/generate", json=payload) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        return result.get('response', 'Analysis failed')
-                    else:
-                        return f"Ollama service error: {response.status}"
-        except Exception as e:
-            logger.error(f"Ollama analysis error: {e}")
-            return f"AI analysis unavailable: {str(e)}"
-    
-    def _build_analysis_prompt(self, data: Dict, artifact_type: str) -> str:
-        """Build analysis prompt for Ollama"""
-        base_prompt = f"""
-You are a cybersecurity analyst. Analyze the following {artifact_type} and provide:
-1. Risk assessment (LOW/MEDIUM/HIGH)
-2. Key findings
-3. Recommended actions
-4. Brief explanation in simple terms
-
-Analysis data: {json.dumps(data, indent=2)}
-
-Respond in a clear, professional format suitable for both technical and non-technical users.
-"""
-        return base_prompt
+    return True
 
 class SOCAnalystBot:
-    """Main bot class"""
-    
-    def __init__(self, telegram_token: str):
-        self.application = Application.builder().token(telegram_token).build()
-        self.file_analyzer = FileAnalyzer()
-        self.ollama_analyzer = OllamaAnalyzer()
-        self.authorized_users = set(map(int, os.getenv('AUTHORIZED_USERS', '').split(','))) if os.getenv('AUTHORIZED_USERS') else set()
+    def __init__(self):
+        # Load environment variables first
+        if not load_environment_variables():
+            logger.error("Failed to load environment variables. Exiting.")
+            sys.exit(1)
+            
+        self.token = os.getenv('TELEGRAM_BOT_TOKEN')
+        self.authorized_users = self._parse_authorized_users()
+        self.virustotal_api_key = os.getenv('VIRUSTOTAL_API_KEY')
+        self.abuseipdb_api_key = os.getenv('ABUSEIPDB_API_KEY')
+        self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+        self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.2:1b')
+        self.max_file_size = int(os.getenv('MAX_FILE_SIZE_MB', '50')) * 1024 * 1024
         
-        # Add handlers
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_file))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
-    
-    def _is_authorized(self, user_id: int) -> bool:
-        """Check if user is authorized"""
-        return not self.authorized_users or user_id in self.authorized_users
-    
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command"""
-        if not self._is_authorized(update.effective_user.id):
-            await update.message.reply_text("❌ Unauthorized access")
-            return
+        # Initialize data stores
+        self.threat_feed = {}
+        self.analysis_cache = {}
+        self.user_sessions = {}
         
-        welcome_msg = """
-🛡️ **Private SOC Analyst Bot**
+        logger.info("🛡️ SOC Analyst Bot initialized successfully")
+        logger.info(f"🤖 Ollama URL: {self.ollama_base_url}")
+        logger.info(f"🧠 Ollama Model: {self.ollama_model}")
+        logger.info(f"👥 Authorized Users: {len(self.authorized_users) if self.authorized_users else 'All users'}")
 
-I'm your personal security analyst! Send me:
-📁 Files to analyze
-🌐 URLs to check
-🔍 IP addresses to investigate
-📧 Email content to examine
-🔐 File hashes to lookup
-
-Commands:
-/help - Show detailed help
-/status - Check system status
-
-I'll analyze everything and give you clear recommendations!
-        """
-        await update.message.reply_text(welcome_msg, parse_mode=ParseMode.MARKDOWN)
-    
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-        
-        help_msg = """
-🔍 **How to use SOC Analyst Bot:**
-
-**File Analysis:**
-📁 Send any file - I'll scan for malware and suspicious patterns
-
-**URL Checking:**
-🌐 Send a URL - I'll check its reputation and safety
-
-**IP Investigation:**
-🔍 Send an IP address - I'll check for malicious activity
-
-**Hash Lookup:**
-🔐 Send MD5/SHA1/SHA256 hash - I'll check threat databases
-
-**Email Analysis:**
-📧 Forward suspicious emails - I'll analyze headers and content
-
-**Example inputs:**
-- `https://suspicious-site.com`
-- `192.168.1.1`
-- `5d41402abc4b2a76b9719d911017c592`
-- Forward email or paste email headers
-
-I'll provide risk assessment and actionable recommendations!
-        """
-        await update.message.reply_text(help_msg, parse_mode=ParseMode.MARKDOWN)
-    
-    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /status command"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-        
-        # Check Ollama connection
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:11434/api/tags") as response:
-                    ollama_status = "✅ Connected" if response.status == 200 else "❌ Error"
-        except:
-            ollama_status = "❌ Offline"
-        
-        # Check API keys
-        vt_status = "✅ Configured" if os.getenv('VIRUSTOTAL_API_KEY') else "⚠️ Not configured"
-        abuse_status = "✅ Configured" if os.getenv('ABUSEIPDB_API_KEY') else "⚠️ Not configured"
-        
-        status_msg = f"""
-🔧 **System Status:**
-
-**AI Engine:** {ollama_status}
-**VirusTotal API:** {vt_status}
-**AbuseIPDB API:** {abuse_status}
-
-**Capabilities:**
-- File scanning with YARA rules
-- Hash lookups (when APIs configured)
-- URL reputation checking
-- IP address investigation
-- AI-powered analysis
-
-⚠️ *Configure API keys for full functionality*
-        """
-        await update.message.reply_text(status_msg, parse_mode=ParseMode.MARKDOWN)
-    
-    async def handle_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle uploaded files"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-        
-        document = update.message.document
-        await update.message.reply_text("📁 Analyzing file... Please wait.")
+    def _parse_authorized_users(self) -> Optional[List[int]]:
+        """Parse authorized users from environment variable"""
+        users_str = os.getenv('AUTHORIZED_USERS', '').strip()
+        if not users_str:
+            return None
         
         try:
-            # Download file
-            file = await context.bot.get_file(document.file_id)
-            file_path = self.file_analyzer.upload_dir / document.file_name
-            await file.download_to_drive(file_path)
-            
-            # Analyze file
-            analysis = await self.file_analyzer.analyze_file(str(file_path))
-            
-            if 'error' in analysis:
-                await update.message.reply_text(f"❌ Analysis failed: {analysis['error']}")
-                return
-            
-            # Get AI analysis
-            ai_analysis = await self.ollama_analyzer.analyze_with_ai(analysis, "file")
-            
-            # Check hash against threat intel
-            hash_results = {}
-            if analysis.get('hashes', {}).get('sha256'):
-                async with ThreatIntelligence() as ti:
-                    hash_results = await ti.check_hash(analysis['hashes']['sha256'])
-            
-            # Format response
-            response = self._format_file_analysis(analysis, ai_analysis, hash_results)
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
-            
-            # Clean up
-            os.remove(file_path)
-            
-        except Exception as e:
-            logger.error(f"File handling error: {e}")
-            await update.message.reply_text(f"❌ Error processing file: {str(e)}")
-    
-    async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle text messages (URLs, IPs, hashes, emails)"""
-        if not self._is_authorized(update.effective_user.id):
-            return
-        
-        text = update.message.text.strip()
-        
-        # Detect input type and handle accordingly
-        if self._is_url(text):
-            await self._handle_url(update, text)
-        elif self._is_ip(text):
-            await self._handle_ip(update, text)
-        elif self._is_hash(text):
-            await self._handle_hash(update, text)
-        elif self._is_email_content(text):
-            await self._handle_email(update, text)
-        else:
-            await update.message.reply_text(
-                "🤔 I'm not sure what to analyze. Please send:\n"
-                "• A URL (http://...)\n"
-                "• An IP address\n"
-                "• A file hash\n"
-                "• Email content\n"
-                "• Or upload a file"
-            )
-    
-    def _is_url(self, text: str) -> bool:
-        """Check if text is a URL"""
-        return text.startswith(('http://', 'https://')) or ('.' in text and ' ' not in text)
-    
-    def _is_ip(self, text: str) -> bool:
-        """Check if text is an IP address"""
-        import ipaddress
-        try:
-            ipaddress.ip_address(text)
+            return [int(user_id.strip()) for user_id in users_str.split(',') if user_id.strip()]
+        except ValueError:
+            logger.warning("Invalid AUTHORIZED_USERS format. Allowing all users.")
+            return None
+
+    def is_authorized(self, user_id: int) -> bool:
+        """Check if user is authorized to use the bot"""
+        if self.authorized_users is None:
             return True
-        except:
-            return False
-    
-    def _is_hash(self, text: str) -> bool:
-        """Check if text is a hash"""
-        return len(text) in [32, 40, 64] and all(c in '0123456789abcdefABCDEF' for c in text)
-    
-    def _is_email_content(self, text: str) -> bool:
-        """Check if text contains email content"""
-        email_indicators = ['from:', 'to:', 'subject:', 'received:', '@']
-        return any(indicator in text.lower() for indicator in email_indicators)
-    
-    async def _handle_url(self, update: Update, url: str):
-        """Handle URL analysis"""
-        await update.message.reply_text("🌐 Analyzing URL... Please wait.")
+        return user_id in self.authorized_users
+
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start command handler"""
+        user_id = update.effective_user.id
         
-        try:
-            async with ThreatIntelligence() as ti:
-                url_results = await ti.check_url(url)
-            
-            ai_analysis = await self.ollama_analyzer.analyze_with_ai(
-                {'url': url, 'reputation_check': url_results}, 
-                "URL"
+        if not self.is_authorized(user_id):
+            await update.message.reply_text(
+                "🚫 You are not authorized to use this bot.\n"
+                "Contact the administrator if you believe this is an error."
             )
-            
-            response = self._format_url_analysis(url, url_results, ai_analysis)
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ URL analysis failed: {str(e)}")
-    
-    async def _handle_ip(self, update: Update, ip: str):
-        """Handle IP analysis"""
-        await update.message.reply_text("🔍 Investigating IP... Please wait.")
+            return
         
-        try:
-            async with ThreatIntelligence() as ti:
-                ip_results = await ti.check_ip(ip)
-            
-            ai_analysis = await self.ollama_analyzer.analyze_with_ai(
-                {'ip': ip, 'reputation_check': ip_results}, 
-                "IP address"
-            )
-            
-            response = self._format_ip_analysis(ip, ip_results, ai_analysis)
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ IP analysis failed: {str(e)}")
-    
-    async def _handle_hash(self, update: Update, file_hash: str):
-        """Handle hash lookup"""
-        await update.message.reply_text("🔐 Looking up hash... Please wait.")
+        welcome_text = """
+🛡️ **SOC Analyst Bot** - Family Network Security
+==========================================
+
+I'm your Security Operations Center analyst! I can help you:
+
+🔍 **Analysis Commands:**
+• `/analyze_url <url>` - Analyze website/URL for threats
+• `/analyze_ip <ip>` - Check IP address reputation  
+• `/scan_hash <hash>` - Check file hash against threat databases
+• `/phishing_check <url>` - Advanced phishing detection
+
+📊 **Monitoring Commands:**
+• `/network_status` - Check home network health
+• `/threat_summary` - Recent threat intelligence summary
+• `/security_tips` - Daily security recommendations
+
+🆘 **Emergency Commands:**
+• `/incident_report` - Report a security incident
+• `/block_ip <ip>` - Emergency IP blocking
+• `/help` - Show detailed help
+
+**Simply send me files, URLs, or suspicious content and I'll analyze them for threats!**
+
+🔒 **Security:** This bot is configured for the OrRosen family network. All analysis data is processed locally when possible.
+        """
         
-        try:
-            async with ThreatIntelligence() as ti:
-                hash_results = await ti.check_hash(file_hash)
-            
-            ai_analysis = await self.ollama_analyzer.analyze_with_ai(
-                {'hash': file_hash, 'threat_intel': hash_results}, 
-                "file hash"
-            )
-            
-            response = self._format_hash_analysis(file_hash, hash_results, ai_analysis)
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ Hash lookup failed: {str(e)}")
-    
-    async def _handle_email(self, update: Update, email_content: str):
-        """Handle email analysis"""
-        await update.message.reply_text("📧 Analyzing email... Please wait.")
-        
-        try:
-            # Extract URLs and IPs from email
-            urls = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', email_content)
-            ips = re.findall(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b', email_content)
-            
-            email_analysis = {
-                'content_length': len(email_content),
-                'urls_found': urls,
-                'ips_found': ips,
-                'has_attachments': 'attachment' in email_content.lower(),
-                'suspicious_keywords': self._find_suspicious_keywords(email_content)
-            }
-            
-            ai_analysis = await self.ollama_analyzer.analyze_with_ai(email_analysis, "email")
-            
-            response = self._format_email_analysis(email_analysis, ai_analysis)
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ Email analysis failed: {str(e)}")
-    
-    def _find_suspicious_keywords(self, content: str) -> List[str]:
-        """Find suspicious keywords in email content"""
-        suspicious_keywords = [
-            'urgent', 'verify account', 'suspended', 'click here', 'download now',
-            'wire transfer', 'bitcoin', 'cryptocurrency', 'lottery', 'inheritance',
-            'tax refund', 'irs', 'paypal', 'amazon', 'microsoft', 'apple'
+        keyboard = [
+            [InlineKeyboardButton("🔍 Quick URL Check", callback_data="quick_url")],
+            [InlineKeyboardButton("📊 Network Status", callback_data="network_status")],
+            [InlineKeyboardButton("🆘 Report Incident", callback_data="incident_report")]
         ]
-        found = []
-        content_lower = content.lower()
-        for keyword in suspicious_keywords:
-            if keyword in content_lower:
-                found.append(keyword)
-        return found
-    
-    def _format_file_analysis(self, analysis: Dict, ai_analysis: str, hash_results: Dict) -> str:
-        """Format file analysis response"""
-        risk_level = "🔴 HIGH" if analysis['risk_score'] > 70 else "🟡 MEDIUM" if analysis['risk_score'] > 30 else "🟢 LOW"
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        response = f"""
-🛡️ **File Analysis Report**
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
 
-**File:** `{analysis['filename']}`
-**Size:** {analysis['size']} bytes
-**Type:** {analysis['type']}
-**Risk Level:** {risk_level}
-
-**Hashes:**
-- MD5: `{analysis['hashes']['md5']}`
-- SHA256: `{analysis['hashes']['sha256']}`
-
-**Detections:**
-- YARA matches: {len(analysis['yara_matches'])}
-- Suspicious indicators: {len(analysis['suspicious_indicators'])}
-        """
+    async def analyze_url(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Analyze URL for threats"""
+        user_id = update.effective_user.id
         
-        if hash_results.get('found'):
-            response += f"\n**Threat Intelligence:**\n• VirusTotal: {hash_results['positives']}/{hash_results['total']} detections"
+        if not self.is_authorized(user_id):
+            await update.message.reply_text("🚫 Unauthorized access.")
+            return
         
-        response += f"\n\n**AI Analysis:**\n{ai_analysis}"
+        if not context.args:
+            await update.message.reply_text(
+                "🔍 **URL Analysis**\n\n"
+                "Usage: `/analyze_url <url>`\n\n"
+                "Example: `/analyze_url https://suspicious-site.com`",
+                parse_mode='Markdown'
+            )
+            return
         
-        return response
-    
-    def _format_url_analysis(self, url: str, results: Dict, ai_analysis: str) -> str:
-        """Format URL analysis response"""
-        if results.get('found'):
-            risk = "🔴 MALICIOUS" if results['positives'] > 0 else "🟢 CLEAN"
-            response = f"""
-🌐 **URL Analysis Report**
-
-**URL:** `{url}`
-**Status:** {risk}
-**Detections:** {results.get('positives', 0)}/{results.get('total', 0)}
-
-**AI Analysis:**
-{ai_analysis}
-            """
-        else:
-            response = f"""
-🌐 **URL Analysis Report**
-
-**URL:** `{url}`
-**Status:** 🟡 Unknown (not in database)
-
-**AI Analysis:**
-{ai_analysis}
-            """
+        url = context.args[0]
+        logger.info(f"Analyzing URL: {url} for user {user_id}")
         
-        return response
-    
-    def _format_ip_analysis(self, ip: str, results: Dict, ai_analysis: str) -> str:
-        """Format IP analysis response"""
-        if 'error' not in results:
-            confidence = results.get('abuseConfidencePercentage', 0)
-            risk = "🔴 HIGH RISK" if confidence > 75 else "🟡 MEDIUM RISK" if confidence > 25 else "🟢 LOW RISK"
+        # Send initial message
+        analysis_msg = await update.message.reply_text("🔍 Analyzing URL, please wait...")
+        
+        try:
+            # Perform analysis
+            result = await self._analyze_url_comprehensive(url)
             
-            response = f"""
-🔍 **IP Analysis Report**
+            # Format result
+            report = self._format_url_analysis(url, result)
+            
+            await analysis_msg.edit_text(report, parse_mode='Markdown')
+            
+        except Exception as e:
+            logger.error(f"Error analyzing URL {url}: {e}")
+            await analysis_msg.edit_text(
+                f"❌ Error analyzing URL: {str(e)}\n\n"
+                "Please try again or contact support if the issue persists."
+            )
 
-**IP Address:** `{ip}`
-**Risk Level:** {risk}
-**Abuse Confidence:** {confidence}%
-**Country:** {results.get('countryName', 'Unknown')}
-**ISP:** {results.get('isp', 'Unknown')}
+    async def _analyze_url_comprehensive(self, url: str) -> Dict:
+        """Comprehensive URL analysis"""
+        result = {
+            'url': url,
+            'timestamp': datetime.now().isoformat(),
+            'safety_score': 50,  # Default neutral score
+            'threats': [],
+            'recommendations': [],
+            'details': {}
+        }
+        
+        try:
+            # Basic URL validation
+            parsed = urllib.parse.urlparse(url)
+            if not parsed.scheme or not parsed.netloc:
+                result['threats'].append("Invalid URL format")
+                result['safety_score'] = 10
+                return result
+            
+            # Check against known threat indicators
+            await self._check_url_patterns(url, result)
+            
+            # VirusTotal check
+            if self.virustotal_api_key:
+                await self._check_virustotal_url(url, result)
+            
+            # AI Analysis
+            ai_analysis = await self._get_ai_analysis(f"Analyze this URL for security threats: {url}")
+            if ai_analysis:
+                result['ai_analysis'] = ai_analysis
+            else:
+                result['ai_analysis'] = "Ollama service error: 404"
+            
+            # Calculate final safety score
+            result['safety_score'] = self._calculate_safety_score(result)
+            
+        except Exception as e:
+            logger.error(f"Error in comprehensive URL analysis: {e}")
+            result['threats'].append(f"Analysis error: {str(e)}")
+        
+        return result
 
-**AI Analysis:**
-{ai_analysis}
-            """
+    async def _check_url_patterns(self, url: str, result: Dict):
+        """Check URL against suspicious patterns"""
+        suspicious_patterns = [
+            r'bit\.ly|tinyurl|t\.co',  # URL shorteners
+            r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}',  # IP addresses
+            r'[a-z0-9]{32,}\.tk|\.ml|\.ga|\.cf',  # Suspicious TLDs with long subdomains
+            r'paypal|amazon|microsoft|google.*[0-9]',  # Brand impersonation
+            r'secure.*update|verify.*account|suspended.*account'  # Phishing keywords
+        ]
+        
+        threats_found = []
+        for pattern in suspicious_patterns:
+            if re.search(pattern, url, re.IGNORECASE):
+                threats_found.append(f"Suspicious pattern detected: {pattern}")
+        
+        result['threats'].extend(threats_found)
+        result['details']['pattern_analysis'] = {
+            'patterns_checked': len(suspicious_patterns),
+            'threats_found': len(threats_found)
+        }
+
+    async def _check_virustotal_url(self, url: str, result: Dict):
+        """Check URL with VirusTotal API"""
+        try:
+            headers = {'x-apikey': self.virustotal_api_key}
+            
+            # Submit URL for analysis
+            scan_response = requests.post(
+                'https://www.virustotal.com/api/v3/urls',
+                headers=headers,
+                data={'url': url},
+                timeout=10
+            )
+            
+            if scan_response.status_code == 200:
+                scan_data = scan_response.json()
+                analysis_id = scan_data.get('data', {}).get('id')
+                
+                if analysis_id:
+                    # Get analysis results
+                    analysis_response = requests.get(
+                        f'https://www.virustotal.com/api/v3/analyses/{analysis_id}',
+                        headers=headers,
+                        timeout=10
+                    )
+                    
+                    if analysis_response.status_code == 200:
+                        analysis_data = analysis_response.json()
+                        stats = analysis_data.get('data', {}).get('attributes', {}).get('stats', {})
+                        
+                        malicious = stats.get('malicious', 0)
+                        suspicious = stats.get('suspicious', 0)
+                        harmless = stats.get('harmless', 0)
+                        
+                        result['details']['virustotal'] = {
+                            'malicious': malicious,
+                            'suspicious': suspicious,
+                            'harmless': harmless,
+                            'scan_date': analysis_data.get('data', {}).get('attributes', {}).get('date')
+                        }
+                        
+                        if malicious > 0:
+                            result['threats'].append(f"VirusTotal: {malicious} engines detected malware")
+                        if suspicious > 0:
+                            result['threats'].append(f"VirusTotal: {suspicious} engines flagged as suspicious")
+            
+        except Exception as e:
+            logger.error(f"VirusTotal API error: {e}")
+            result['details']['virustotal_error'] = str(e)
+
+    async def _get_ai_analysis(self, prompt: str) -> Optional[str]:
+        """Get AI analysis from Ollama"""
+        try:
+            response = requests.post(
+                f"{self.ollama_base_url}/api/generate",
+                json={
+                    "model": self.ollama_model,
+                    "prompt": f"{prompt}\n\nProvide a concise security assessment focusing on potential threats and recommendations.",
+                    "stream": False
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('response', '').strip()
+            else:
+                logger.error(f"Ollama API error: {response.status_code}")
+                return None
+                
+        except requests.exceptions.ConnectionError:
+            logger.error("Cannot connect to Ollama service")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting AI analysis: {e}")
+            return None
+
+    def _calculate_safety_score(self, result: Dict) -> int:
+        """Calculate safety score based on analysis results"""
+        score = 50  # Start neutral
+        
+        # Deduct points for threats
+        threat_count = len(result.get('threats', []))
+        score -= (threat_count * 15)
+        
+        # VirusTotal results
+        vt_data = result.get('details', {}).get('virustotal', {})
+        if vt_data:
+            malicious = vt_data.get('malicious', 0)
+            suspicious = vt_data.get('suspicious', 0)
+            
+            score -= (malicious * 20)
+            score -= (suspicious * 10)
+            
+            # Bonus for clean results
+            if malicious == 0 and suspicious == 0:
+                score += 20
+        
+        # Ensure score is within bounds
+        return max(0, min(100, score))
+
+    def _format_url_analysis(self, url: str, result: Dict) -> str:
+        """Format URL analysis result for display"""
+        score = result.get('safety_score', 0)
+        
+        # Determine status emoji and text
+        if score >= 80:
+            status_emoji = "🟢"
+            status_text = "Safe"
+        elif score >= 60:
+            status_emoji = "🟡"
+            status_text = "Caution"
+        elif score >= 40:
+            status_emoji = "🟠"
+            status_text = "Suspicious"
         else:
-            response = f"""
-🔍 **IP Analysis Report**
-
-**IP Address:** `{ip}`
-**Status:** Analysis unavailable
-
-**AI Analysis:**
-{ai_analysis}
-            """
+            status_emoji = "🔴"
+            status_text = "Dangerous"
         
-        return response
-    
-    def _format_hash_analysis(self, file_hash: str, results: Dict, ai_analysis: str) -> str:
-        """Format hash analysis response"""
-        if results.get('found'):
-            risk = "🔴 MALICIOUS" if results['positives'] > 0 else "🟢 CLEAN"
-            response = f"""
-🔐 **Hash Analysis Report**
-
-**Hash:** `{file_hash}`
-**Status:** {risk}
-**Detections:** {results.get('positives', 0)}/{results.get('total', 0)}
-**Scan Date:** {results.get('scan_date', 'Unknown')}
-
-**AI Analysis:**
-{ai_analysis}
-            """
+        # Check if URL is in any database
+        vt_data = result.get('details', {}).get('virustotal')
+        if vt_data:
+            db_status = f"Known (VT: {vt_data.get('harmless', 0)}✅ {vt_data.get('malicious', 0)}❌)"
         else:
-            response = f"""
-🔐 **Hash Analysis Report**
-
-**Hash:** `{file_hash}`
-**Status:** 🟡 Unknown (not in database)
+            db_status = "🟡 Unknown (not in database)"
+        
+        report = f"""🌐 **URL Analysis Report**
+URL: {url}
+Status: {status_emoji} {status_text} (Score: {score}/100)
+Database: {db_status}
 
 **AI Analysis:**
-{ai_analysis}
-            """
+{result.get('ai_analysis', 'No AI analysis available')}
+"""
         
-        return response
-    
-    def _format_email_analysis(self, analysis: Dict, ai_analysis: str) -> str:
-        """Format email analysis response"""
-        risk_score = len(analysis['suspicious_keywords']) * 20 + (30 if analysis['urls_found'] else 0)
-        risk_level = "🔴 HIGH" if risk_score > 60 else "🟡 MEDIUM" if risk_score > 30 else "🟢 LOW"
+        # Add threats if any
+        threats = result.get('threats', [])
+        if threats:
+            report += f"\n\n⚠️ **Threats Detected ({len(threats)}):**\n"
+            for threat in threats[:5]:  # Limit to 5 threats
+                report += f"• {threat}\n"
         
-        response = f"""
-📧 **Email Analysis Report**
+        # Add recommendations
+        recommendations = [
+            "🔒 Always verify URLs before clicking",
+            "🛡️ Use updated antivirus software",
+            "👥 Be cautious with personal information"
+        ]
+        
+        if score < 60:
+            recommendations.insert(0, "❌ **DO NOT** visit this URL")
+            recommendations.insert(1, "🚫 Block this domain on your network")
+        
+        report += f"\n\n💡 **Recommendations:**\n"
+        for rec in recommendations[:3]:
+            report += f"• {rec}\n"
+        
+        report += f"\n📅 Analysis Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        return report
 
-**Risk Level:** {risk_level}
-**Content Length:** {analysis['content_length']} characters
-**URLs Found:** {len(analysis['urls_found'])}
-**IPs Found:** {len(analysis['ips_found'])}
-**Suspicious Keywords:** {len(analysis['suspicious_keywords'])}
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Help command handler"""
+        help_text = """
+🛡️ **SOC Analyst Bot - Complete Command Guide**
 
-**AI Analysis:**
-{ai_analysis}
+**🔍 URL & Website Analysis:**
+• `/analyze_url <url>` - Comprehensive URL threat analysis
+• `/phishing_check <url>` - Advanced phishing detection
+• `/domain_info <domain>` - Domain registration & history
+
+**🌐 IP Address Analysis:**  
+• `/analyze_ip <ip>` - IP reputation & geolocation check
+• `/block_ip <ip>` - Emergency IP blocking
+• `/ip_history <ip>` - Historical threat data for IP
+
+**🔐 File & Hash Analysis:**
+• `/scan_hash <hash>` - Check MD5/SHA1/SHA256 against databases
+• Send any file (up to 50MB) for malware analysis
+• `/file_report <hash>` - Get detailed file analysis report
+
+**📊 Network Monitoring:**
+• `/network_status` - Home network security health
+• `/connected_devices` - List of connected devices  
+• `/bandwidth_usage` - Network traffic analysis
+• `/firewall_status` - Firewall rules and status
+
+**🚨 Threat Intelligence:**
+• `/threat_summary` - Latest threat intelligence
+• `/cve_lookup <cve-id>` - Look up CVE vulnerability details
+• `/threat_feed` - Subscribe to threat feeds
+• `/ioc_search <indicator>` - Search for indicators of compromise
+
+**🆘 Emergency Response:**
+• `/incident_report` - Report security incident
+• `/emergency_block <ip/domain>` - Emergency blocking
+• `/quarantine_device <ip>` - Isolate compromised device
+• `/security_alert` - Broadcast security alert to family
+
+**⚙️ Configuration:**
+• `/settings` - Bot configuration options
+• `/authorize_user <user_id>` - Add authorized user
+• `/set_alert_level <level>` - Configure alert sensitivity
+• `/backup_config` - Backup security configurations
+
+**💡 Education & Tips:**
+• `/security_tips` - Daily security recommendations
+• `/explain <term>` - Explain security terminology
+• `/best_practices` - Security best practices guide
+• `/phishing_examples` - Learn to identify phishing
+
+**📱 Quick Actions:**
+Just send me:
+• Any URL - I'll analyze it automatically
+• Any file - I'll scan for malware
+• Any IP address - I'll check its reputation
+• Screenshots of suspicious messages
+
+**🔒 Privacy & Security:**
+• All analysis is done locally when possible
+• No sensitive data is stored permanently  
+• Threat intelligence is anonymized
+• Family network data stays private
+
+**Need immediate help?** Use `/emergency_block` or `/incident_report`
         """
         
-        if analysis['suspicious_keywords']:
-            response += f"\n**Detected Keywords:** {', '.join(analysis['suspicious_keywords'])}"
-        
-        return response
-    
-    def run(self):
-        """Start the bot"""
-        logger.info("Starting SOC Analyst Bot...")
-        self.application.run_polling()
+        await update.message.reply_text(help_text, parse_mode='Markdown')
 
 def main():
     """Main function"""
-    # Load environment variables
-    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    if not telegram_token:
-        logger.error("TELEGRAM_BOT_TOKEN environment variable not set")
-        return
-    
-    # Create and run bot
-    bot = SOCAnalystBot(telegram_token)
-    bot.run()
+    try:
+        # Initialize bot
+        bot = SOCAnalystBot()
+        
+        # Create application
+        application = Application.builder().token(bot.token).build()
+        
+        # Add handlers
+        application.add_handler(CommandHandler("start", bot.start_command))
+        application.add_handler(CommandHandler("help", bot.help_command))
+        application.add_handler(CommandHandler("analyze_url", bot.analyze_url))
+        
+        # Add message handler for automatic analysis
+        # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+        
+        logger.info("🚀 SOC Analyst Bot starting...")
+        
+        # Start the bot
+        application.run_polling(drop_pending_updates=True)
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to start bot: {e}")
+        sys.exit(1)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
