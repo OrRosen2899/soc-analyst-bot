@@ -60,6 +60,7 @@ class SOCAgent:
                 threat_type TEXT,
                 source TEXT,
                 confidence INTEGER DEFAULT 50,
+                metadata TEXT DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -75,6 +76,12 @@ class SOCAgent:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Add metadata column if it doesn't exist (for upgrades)
+        try:
+            cursor.execute('ALTER TABLE iocs ADD COLUMN metadata TEXT DEFAULT "{}"')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         conn.commit()
         conn.close()
@@ -179,13 +186,19 @@ class SOCAgent:
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT indicator, type, description, threat_type, source, confidence, created_at
+            SELECT indicator, type, description, threat_type, source, confidence, metadata, created_at
             FROM iocs 
             WHERE indicator = ? OR indicator LIKE ?
         ''', (indicator, f'%{indicator}%'))
         
         results = []
         for row in cursor.fetchall():
+            metadata = {}
+            try:
+                metadata = json.loads(row[6] or '{}')
+            except (json.JSONDecodeError, TypeError):
+                metadata = {}
+                
             results.append({
                 'indicator': row[0],
                 'type': row[1],
@@ -193,7 +206,8 @@ class SOCAgent:
                 'threat_type': row[3],
                 'source': row[4],
                 'confidence': row[5],
-                'created_at': row[6]
+                'metadata': metadata,
+                'created_at': row[7]
             })
             
         conn.close()
@@ -296,6 +310,20 @@ class SOCAgent:
             for ioc in local_iocs[:3]:  # Limit to 3 results
                 result += f"⚠️ Match found: {ioc['threat_type']} (Confidence: {ioc['confidence']}%)\n"
                 result += f"   Source: {ioc['source']}\n"
+                
+                # Show malware feed metadata if available
+                metadata = ioc.get('metadata', {})
+                if metadata and isinstance(metadata, dict):
+                    if metadata.get('file_name'):
+                        result += f"   📄 File: {metadata['file_name']}\n"
+                    if metadata.get('file_type_guess'):
+                        result += f"   📁 Type: {metadata['file_type_guess']}\n"
+                    if metadata.get('signature'):
+                        result += f"   🔍 Signature: {metadata['signature']}\n"
+                    if metadata.get('vtpercent'):
+                        result += f"   🦠 VT Detection: {metadata['vtpercent']}\n"
+                    if metadata.get('first_seen_utc'):
+                        result += f"   📅 First Seen: {metadata['first_seen_utc']}\n"
         else:
             result += "✅ No matches in local IOC database\n"
         result += "\n"
@@ -307,7 +335,7 @@ class SOCAgent:
         return result
         
     def load_iocs_from_file(self, file_path: str, source: str = "manual_upload") -> int:
-        """Load IOCs from CSV file"""
+        """Load IOCs from CSV file with support for malware analysis format"""
         loaded_count = 0
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -318,27 +346,21 @@ class SOCAgent:
                 sample = file.read(1024)
                 file.seek(0)
                 
-                if ',' in sample:
-                    reader = csv.DictReader(file)
+                if ',' in sample or '\t' in sample:
+                    # Detect delimiter
+                    delimiter = ',' if ',' in sample else '\t'
+                    reader = csv.DictReader(file, delimiter=delimiter)
+                    
                     for row in reader:
-                        indicator = row.get('indicator', '').strip()
-                        if not indicator:
-                            continue
-                            
-                        ioc_type = self.detect_indicator_type(indicator)
-                        description = row.get('description', '')
-                        threat_type = row.get('threat_type', 'unknown')
-                        confidence = int(row.get('confidence', 50))
-                        
-                        try:
-                            cursor.execute('''
-                                INSERT OR REPLACE INTO iocs 
-                                (indicator, type, description, threat_type, source, confidence)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            ''', (indicator, ioc_type, description, threat_type, source, confidence))
-                            loaded_count += 1
-                        except sqlite3.Error:
-                            continue
+                        # Handle malware analysis feed format
+                        if 'sha256_hash' in row or 'md5_hash' in row or 'sha1_hash' in row:
+                            loaded_count += self._process_malware_feed_row(row, cursor, source)
+                        # Handle standard IOC format
+                        elif 'indicator' in row:
+                            loaded_count += self._process_standard_ioc_row(row, cursor, source)
+                        else:
+                            # Try to auto-detect format
+                            loaded_count += self._process_generic_row(row, cursor, source)
                             
                 else:
                     # Plain text file, one indicator per line
@@ -351,9 +373,9 @@ class SOCAgent:
                         try:
                             cursor.execute('''
                                 INSERT OR REPLACE INTO iocs 
-                                (indicator, type, description, threat_type, source, confidence)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            ''', (indicator, ioc_type, f"Imported from {source}", "unknown", source, 50))
+                                (indicator, type, description, threat_type, source, confidence, metadata)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ''', (indicator, ioc_type, f"Imported from {source}", "malware", source, 50, "{}"))
                             loaded_count += 1
                         except sqlite3.Error:
                             continue
@@ -366,6 +388,112 @@ class SOCAgent:
         finally:
             conn.close()
             
+        return loaded_count
+    
+    def _process_malware_feed_row(self, row: Dict, cursor, source: str) -> int:
+        """Process malware analysis feed row format"""
+        loaded_count = 0
+        
+        # Extract metadata
+        metadata = {
+            'first_seen_utc': row.get('first_seen_utc', ''),
+            'reporter': row.get('reporter', ''),
+            'file_name': row.get('file_name', ''),
+            'file_type_guess': row.get('file_type_guess', ''),
+            'mime_type': row.get('mime_type', ''),
+            'signature': row.get('signature', ''),
+            'clamav': row.get('clamav', ''),
+            'vtpercent': row.get('vtpercent', ''),
+            'imphash': row.get('imphash', ''),
+            'ssdeep': row.get('ssdeep', ''),
+            'tlsh': row.get('tlsh', '')
+        }
+        
+        # Create description from available data
+        file_name = row.get('file_name', 'unknown_file')
+        file_type = row.get('file_type_guess', row.get('mime_type', 'unknown'))
+        signature = row.get('signature', '')
+        
+        description_parts = [f"File: {file_name}"]
+        if file_type != 'unknown':
+            description_parts.append(f"Type: {file_type}")
+        if signature:
+            description_parts.append(f"Signature: {signature}")
+            
+        description = " | ".join(description_parts)
+        
+        # Determine confidence from VT percentage if available
+        confidence = 75  # Default confidence
+        try:
+            vt_percent = row.get('vtpercent', '')
+            if vt_percent and vt_percent != '':
+                vt_val = float(vt_percent.strip('%'))
+                confidence = min(95, max(50, int(vt_val)))
+        except (ValueError, TypeError):
+            pass
+        
+        # Process each hash type
+        hash_types = ['sha256_hash', 'md5_hash', 'sha1_hash']
+        for hash_field in hash_types:
+            hash_value = row.get(hash_field, '').strip()
+            if hash_value and hash_value.lower() not in ['', 'null', 'none', 'n/a']:
+                hash_type = hash_field.replace('_hash', '')
+                
+                try:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO iocs 
+                        (indicator, type, description, threat_type, source, confidence, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (hash_value, hash_type, description, "malware", source, confidence, json.dumps(metadata)))
+                    loaded_count += 1
+                except sqlite3.Error as e:
+                    logger.error(f"Error inserting {hash_type} hash {hash_value}: {e}")
+                    continue
+        
+        return loaded_count
+    
+    def _process_standard_ioc_row(self, row: Dict, cursor, source: str) -> int:
+        """Process standard IOC format"""
+        indicator = row.get('indicator', '').strip()
+        if not indicator:
+            return 0
+            
+        ioc_type = self.detect_indicator_type(indicator)
+        description = row.get('description', '')
+        threat_type = row.get('threat_type', 'unknown')
+        confidence = int(row.get('confidence', 50))
+        
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO iocs 
+                (indicator, type, description, threat_type, source, confidence, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (indicator, ioc_type, description, threat_type, source, confidence, "{}"))
+            return 1
+        except sqlite3.Error:
+            return 0
+    
+    def _process_generic_row(self, row: Dict, cursor, source: str) -> int:
+        """Process generic row by trying to find hash-like values"""
+        loaded_count = 0
+        
+        for key, value in row.items():
+            value = str(value).strip()
+            if not value or value.lower() in ['', 'null', 'none', 'n/a']:
+                continue
+                
+            ioc_type = self.detect_indicator_type(value)
+            if ioc_type != 'unknown':
+                try:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO iocs 
+                        (indicator, type, description, threat_type, source, confidence, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (value, ioc_type, f"Extracted from field: {key}", "unknown", source, 50, json.dumps({key: value})))
+                    loaded_count += 1
+                except sqlite3.Error:
+                    continue
+                    
         return loaded_count
 
 # Bot Handlers
