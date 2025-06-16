@@ -134,7 +134,13 @@ sudo journalctl -u soc-agent -f
 
 ### IOC File Formats
 
-**CSV Format** (recommended):
+**Malware Analysis Feed Format** (your specific format):
+```csv
+first_seen_utc,sha256_hash,md5_hash,sha1_hash,reporter,file_name,file_type_guess,mime_type,signature,clamav,vtpercent,imphash,ssdeep,tlsh
+2025-01-15T10:30:00Z,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,d41d8cd98f00b204e9800998ecf8427e,da39a3ee5e6b4b0d3255bfef95601890afd80709,MalwareAnalysis,trojan.exe,PE32 executable,application/x-executable,Trojan.Win32.Generic,Win.Trojan.Agent-123456,75%,1234567890abcdef,48:hash1234:hash5678,T1234567890ABCDEF
+```
+
+**Standard IOC Format**:
 ```csv
 indicator,type,description,threat_type,source,confidence
 malware.com,domain,Known malware distribution,malware,threat_intel,95
@@ -153,12 +159,22 @@ suspicious-domain.net
 
 ### Import IOCs
 ```bash
-# Import from CSV
-python import_iocs.py threat_intel.csv "external_feed"
+# Import malware analysis feed (auto-detects format)
+python import_iocs.py malware_feed.csv "threat_intel"
+
+# Import standard IOC format
+python import_iocs.py indicators.csv "external_feed"
 
 # Import from text file
 python import_iocs.py indicators.txt "manual_analysis"
 ```
+
+**Smart Import Features:**
+- 🔍 **Auto-detection** of CSV format (malware feed vs standard)
+- 📊 **Multiple hashes** extracted from single row (MD5, SHA1, SHA256)
+- 📁 **Rich metadata** preserved from malware analysis feeds
+- 🎯 **Confidence scoring** based on VT detection percentages
+- 🔄 **Duplicate handling** with automatic updates
 
 ### IOC Database Schema
 | Field | Type | Description |
@@ -169,6 +185,15 @@ python import_iocs.py indicators.txt "manual_analysis"
 | `threat_type` | TEXT | Type of threat (malware, phishing, botnet, safe, etc.) |
 | `source` | TEXT | Source of the indicator |
 | `confidence` | INTEGER | Confidence level (0-100) |
+| `metadata` | TEXT | JSON metadata (file info, VT percentages, etc.) |
+
+**Malware Feed Metadata** includes:
+- `first_seen_utc` - When the sample was first observed
+- `file_name` - Original filename
+- `file_type_guess` - Detected file type
+- `signature` - Antivirus signature name
+- `vtpercent` - VirusTotal detection percentage
+- `reporter` - Source of the analysis
 
 ## 💬 Using the Bot
 
@@ -205,8 +230,8 @@ The bot provides comprehensive analysis including:
 
 ```
 🔍 Analysis Report
-Indicator: malware.com
-Type: DOMAIN
+Indicator: d41d8cd98f00b204e9800998ecf8427e
+Type: MD5
 Timestamp: 2025-06-16 15:30:45
 
 🦠 VirusTotal Analysis:
@@ -216,11 +241,16 @@ Timestamp: 2025-06-16 15:30:45
 📋 Local IOC Database:
 ⚠️ Match found: malware (Confidence: 95%)
    Source: threat_intel
+   📄 File: trojan.exe
+   📁 Type: PE32 executable
+   🔍 Signature: Trojan.Win32.Generic
+   🦠 VT Detection: 75%
+   📅 First Seen: 2025-01-15T10:30:00Z
 
 🤖 AI Security Analysis:
 Risk Assessment: HIGH
-This domain has been flagged by multiple security vendors...
-Recommended Actions: Block at firewall, investigate logs...
+This file hash has been flagged by multiple security vendors...
+Recommended Actions: Block file execution, quarantine system...
 ```
 
 ## 🔧 Troubleshooting
