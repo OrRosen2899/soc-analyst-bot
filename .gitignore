@@ -1,0 +1,156 @@
+# Environment files
+.env
+*.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database files (keep structure, not data)
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite3
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# IOC imports and feeds
+ioc_imports/*.csv
+ioc_feeds/
+*.json
+!ioc_template.csv
+!ioc_feeds_config.json.example
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Docker
+.dockerignore
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.#*
+\#*#
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# Pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Security
+*.pem
+*.key
+*.crt
+*.csr
+keys/
+secrets/
+
+# Configuration files with sensitive data
+config.json
+settings.json
+local_config.py
+
+# Runtime files
+*.pid
+*.sock
+
+# Documentation builds
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# Local development
+local/
+dev/
+test_data/
+
+# Download cache
+downloads/
+cache/
