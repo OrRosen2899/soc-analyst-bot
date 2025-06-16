@@ -1,442 +1,369 @@
-# 🛡️ AI SOC Analyst Bot with Advanced IOC Database
+# 🛡️ SOC AI Agent
 
-A comprehensive Security Operations Center (SOC) analyst powered by AI, designed for Raspberry Pi with enterprise-grade threat intelligence capabilities. Perfect for families and professionals who need real-time threat detection and analysis.
+A comprehensive Security Operations Center AI agent for Telegram that combines threat intelligence APIs with local AI analysis. Perfect for family cybersecurity monitoring on Raspberry Pi.
 
-## 🚀 Key Features
+## ✨ Features
 
-### 🔍 **Multi-Vector Analysis**
-- **🔐 Hash Analysis** - MD5, SHA1, SHA256 with instant IOC database lookup
-- **🌐 IP Analysis** - Reputation checking with geographic intelligence  
-- **🔗 URL Analysis** - Phishing and malware domain detection
-- **📄 File Analysis** - Upload any file for comprehensive security analysis
-- **📧 Email Analysis** - Forward suspicious emails for threat assessment
+- 🤖 **AI-Powered Analysis** using Ollama (runs locally)
+- 🦠 **VirusTotal Integration** for malware detection
+- 🚫 **AbuseIPDB Integration** for IP reputation
+- 📋 **Local IOC Database** with SQLite
+- 💬 **Telegram Bot Interface** with rich UI
+- 🔍 **Multi-Indicator Support**: URLs, IPs, domains, hashes
+- 📊 **Analysis History** and statistics
+- 🔒 **Family-Safe** with user authorization
+- 🍓 **Raspberry Pi Optimized**
 
-### 🗄️ **Advanced IOC Database System**
-- **📥 Custom CSV Import** - Specialized support for malware analysis CSV files
-- **🌐 Automated Threat Feeds** - Download from multiple public intelligence sources
-- **⚡ Instant Detection** - Every analysis checks against your threat database
-- **📊 Rich Analytics** - Hit tracking, statistics, and trend analysis
-- **💾 Enterprise Management** - Backup, restore, search, export capabilities
+## 🎯 Supported Indicators
 
-### 🤖 **AI-Powered Intelligence**
-- **🧠 Local AI Analysis** - Ollama integration for privacy-first analysis
-- **🎯 Context-Aware** - AI enhanced with IOC database matches
-- **📈 Continuous Learning** - Improves accuracy over time
-- **🔒 Privacy-First** - All analysis done locally on your device
+| Type | Examples | Sources |
+|------|----------|---------|
+| **URLs** | `https://example.com/malware.exe` | VirusTotal, AI Analysis |
+| **IP Addresses** | `192.168.1.1`, `2001:db8::1` | VirusTotal, AbuseIPDB, Local IOCs |
+| **Domains** | `malware.com`, `phishing.net` | VirusTotal, Local IOCs |
+| **File Hashes** | MD5, SHA1, SHA256 | VirusTotal, Local IOCs |
 
-### 👨‍👩‍👧‍👦 **Family-Friendly Design**
-- **📱 Telegram Interface** - Intuitive buttons and clear results
-- **🔍 Auto-Detection** - Just send suspicious content directly
-- **🛡️ Real-Time Protection** - Automatic threat blocking
-- **📚 Educational** - Learn about cybersecurity threats
+## 🚀 Quick Installation
 
-## 📋 System Requirements
+### Prerequisites
+- Raspberry Pi 4 with 8GB RAM (or any Linux system)
+- Python 3.8+
+- Internet connection
 
-### **Minimum**
-- Raspberry Pi 4 (2GB RAM)
-- 16GB SD card (Class 10)
-- Internet connection for setup
-
-### **Recommended**
-- Raspberry Pi 4 (4GB+ RAM)
-- 32GB+ SD card (high-speed)
-- Ethernet connection
-- Cooling solution
-
-## ⚡ Quick Installation
-
-### 1. **Download Project**
+### One-Command Install
 ```bash
-git clone <your-repo-url>
-cd ai-soc-analyst-bot
+git clone https://github.com/yourusername/soc-ai-agent.git
+cd soc-ai-agent
+python3 setup.py
 ```
 
-### 2. **One-Click Setup**
+### Manual Installation
+
+1. **Clone Repository**
 ```bash
-chmod +x install.sh
-./install.sh
+git clone https://github.com/yourusername/soc-ai-agent.git
+cd soc-ai-agent
 ```
 
-### 3. **Configure Bot**
+2. **Install System Dependencies**
 ```bash
-# Get Telegram bot token from @BotFather
-nano .env
-# Add: TELEGRAM_BOT_TOKEN=your_token_here
+sudo apt update
+sudo apt install -y python3-pip python3-venv git curl sqlite3
 ```
 
-### 4. **Setup Automation**
+3. **Install Ollama**
 ```bash
-chmod +x setup_cron.sh
-./setup_cron.sh
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull llama2
 ```
 
-### 5. **Start Protecting!**
+4. **Setup Python Environment**
 ```bash
-docker-compose restart
-# Send /start to your bot on Telegram
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## 🗄️ IOC Database - The Game Changer
-
-### **Custom CSV Format Support**
-Perfect for malware analysis systems with this exact format:
-```
-first_seen_utc, sha256_hash, md5_hash, sha1_hash, reporter, 
-file_name, file_type_guess, mime_type, signature, clamav, 
-vtpercent, imphash, ssdeep, tlsh
-```
-
-### **Smart IOC Extraction**
-From **each CSV row**, extract **4-5 IOCs**:
-- ✅ **SHA256, MD5, SHA1** hashes
-- ✅ **Filenames** and **Import hashes**
-- ✅ **Auto-calculated confidence** from VT percentages
-- ✅ **Rich metadata** and threat classification
-
-### **Multiple Import Methods**
-
-#### **Super Quick Import**
+5. **Configure Environment**
 ```bash
-./quick_import.sh your_malware_file.csv
+cp .env.example .env
+# Edit .env with your API keys
 ```
 
-#### **Custom Format Importer**
+## ⚙️ Configuration
+
+### API Keys Required
+
+1. **Telegram Bot Token**
+   - Message [@BotFather](https://t.me/botfather) on Telegram
+   - Create new bot: `/newbot`
+   - Copy the token to `.env`
+
+2. **VirusTotal API Key**
+   - Register at [virustotal.com](https://virustotal.com)
+   - Go to API Key section
+   - Copy key to `.env`
+
+3. **AbuseIPDB API Key** (Optional)
+   - Register at [abuseipdb.com](https://abuseipdb.com)
+   - Generate API key
+   - Copy key to `.env`
+
+### Environment Configuration (.env)
 ```bash
-# Interactive import with validation
-python3 custom_ioc_import.py --interactive
+# Required
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+VIRUSTOTAL_API_KEY=your_vt_key_here
 
-# Direct import
-python3 custom_ioc_import.py --file your_malware_data.csv
-```
+# Optional but recommended
+ABUSEDB_API_KEY=your_abusedb_key_here
+ALLOWED_USER_IDS=123456789,987654321
 
-#### **Auto-Detection Import**
-```bash
-# Automatically detects your CSV format
-python3 add_iocs.py --interactive
-```
-
-### **Automated Threat Intelligence**
-- **Daily Updates** - Download latest IOCs from public feeds
-- **Multiple Sources** - Abuse.ch, Blocklist.de, PhishTank, and more
-- **Smart Processing** - Automatic deduplication and validation
-- **Zero Maintenance** - Runs automatically in background
-
-## 🎯 How It Works
-
-### **Real-Time Protection Flow**
-1. **Family member** sends suspicious link/file to bot
-2. **Instant IOC check** against your threat database
-3. **AI analysis** enhanced with IOC context if match found
-4. **VirusTotal lookup** (if configured)
-5. **Comprehensive report** with actionable recommendations
-
-### **IOC Match Example**
-```
-🚨 IOC DATABASE MATCH!
-Threat Type: malware
-Malware Family: Trojan.Generic
-Severity: Critical
-Source: sandbox_analysis  
-Confidence: 85%
-Description: Signature: Trojan.Generic; Type: executable; VT: 85%
-
-🤖 AI Analysis:
-This hash matches a known malicious file in our threat database.
-IMMEDIATE ACTION REQUIRED:
-1. Do not execute this file
-2. Run full system scan
-3. Check for other indicators of compromise
-```
-
-## 📊 Management & Analytics
-
-### **Database Management**
-```bash
-# Interactive management menu
-python3 manage_iocs.py --interactive
-
-# Quick statistics
-python3 add_iocs.py --stats
-
-# Search IOCs
-python3 manage_iocs.py --search "evil.com"
-
-# Export threat intelligence
-python3 manage_iocs.py --export my_threats.csv
-```
-
-### **Feed Management**
-```bash
-# Update all threat feeds
-python3 ioc_feeds.py --update
-
-# List available feeds
-python3 ioc_feeds.py --list
-
-# Enable/disable specific feeds
-python3 ioc_feeds.py --enable abuse_ch_malware
-```
-
-### **System Monitoring**
-```bash
-# Check bot status
-docker-compose ps
-
-# View real-time logs
-docker-compose logs -f soc-bot
-
-# Database statistics
-python3 add_iocs.py --stats
-```
-
-## 🔧 Advanced Configuration
-
-### **Environment Variables (.env)**
-```bash
-# Required: Telegram Bot Token
-TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
-
-# AI Configuration
-OLLAMA_BASE_URL=http://ollama:11434
+# System Configuration
+OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama2
-
-# Optional: Enhanced Analysis
-VIRUSTOTAL_API_KEY=your_virustotal_api_key
+DATABASE_PATH=soc_agent.db
 ```
 
-### **Supported IOC Types**
-- **Hashes**: MD5, SHA1, SHA256, IMPHASH
-- **Network**: IPv4, IPv6, Domains, URLs
-- **Files**: Filenames, Registry keys, Mutexes
-- **Email**: Email addresses
-- **Advanced**: YARA rules, Certificates
+### Get Your Telegram User ID
+1. Message [@userinfobot](https://t.me/userinfobot) on Telegram
+2. Add your ID to `ALLOWED_USER_IDS` in `.env`
 
-### **Automated Operations**
-- **Daily (2:00 AM)**: Download threat feeds, import IOCs, create backups
-- **Weekly (Sunday 3:00 AM)**: Database maintenance, cleanup, optimization
-- **Continuous**: Real-time threat detection and family protection
+## 🏃‍♂️ Running the Agent
 
-## 🔒 Security & Privacy
-
-### **Privacy-First Design**
-- **Local Processing** - All AI analysis runs on your device
-- **No Data Sharing** - IOCs and analysis stay on your Raspberry Pi
-- **Encrypted Backups** - Optional backup encryption
-- **Access Control** - Only your family has access
-
-### **Enterprise Security Features**
-- **Audit Trail** - Track all IOC hits and system access
-- **False Positive Management** - Learn and improve over time
-- **Database Integrity** - Automatic validation and repair
-- **Secure Updates** - Verified threat intelligence sources
-
-## 📱 Telegram Bot Interface
-
-### **Smart Buttons**
-- 🔍 **Analyze Hash** - Submit file hashes for analysis
-- 🌐 **Analyze IP** - Check IP address reputation
-- 🔗 **Analyze URL** - Verify link safety before clicking
-- 📄 **Analyze File** - Upload suspicious files
-- 📧 **Analyze Email** - Forward phishing attempts
-- 🗄️ **IOC Database** - Manage threat intelligence
-- 📊 **Status** - System health and statistics
-
-### **Auto-Detection**
-Just send any suspicious content directly:
-- **Hashes**: `5d41402abc4b2a76b9719d911017c592`
-- **IPs**: `192.168.1.100`
-- **URLs**: `https://suspicious-site.com`
-- **Files**: Upload any file type
-
-## 🏠 Family Protection Scenarios
-
-### **Safe Browsing**
-"*Dad, is this link safe?*" → Send to bot → Instant safety report
-
-### **Email Security** 
-"*Mom got a suspicious email*" → Forward to bot → Phishing analysis
-
-### **File Safety**
-"*Downloaded this file, is it safe?*" → Upload to bot → Malware scan
-
-### **Learning Opportunity**
-Each analysis includes educational content about cybersecurity threats
-
-## 📁 Complete Project Structure
-
-```
-ai-soc-analyst-bot/
-├── 🔧 Core Application
-│   ├── main.py                    # Main bot with IOC integration
-│   ├── ioc_database.py           # IOC database management
-│   ├── add_iocs.py               # Enhanced IOC import with auto-detection
-│   ├── custom_ioc_import.py      # Specialized importer for your CSV format
-│   ├── ioc_feeds.py              # Automated threat feed downloader
-│   ├── manage_iocs.py            # Database management tools
-│   └── requirements.txt          # Python dependencies
-│
-├── 🐳 Deployment
-│   ├── Dockerfile                # Container with IOC database support
-│   ├── docker-compose.yml        # Service orchestration
-│   ├── install.sh                # Enhanced installation script
-│   └── soc-bot.service          # Systemd service
-│
-├── ⚙️ Configuration & Templates
-│   ├── .env.example             # Environment configuration template
-│   ├── ioc_template.csv         # Standard IOC CSV format
-│   ├── malware_sample.csv       # Your custom CSV format example
-│   └── .gitignore               # Git ignore rules
-│
-├── 🔄 Automation Scripts
-│   ├── setup_cron.sh            # Setup automated operations
-│   ├── quick_import.sh           # One-command CSV import
-│   ├── update_ioc_feeds.sh      # Daily feed updates (auto-created)
-│   └── weekly_maintenance.sh    # Weekly maintenance (auto-created)
-│
-├── 📖 Documentation
-│   ├── README.md                # This comprehensive guide
-│   ├── IOC_IMPORT_GUIDE.md      # Detailed IOC import instructions
-│   ├── YOUR_CSV_FORMAT_GUIDE.md # Guide for your specific CSV format
-│   └── COMPLETE_PROJECT_STRUCTURE.md # Full project overview
-│
-└── 📂 Runtime Directories (created automatically)
-    ├── data/                    # IOC database storage
-    ├── logs/                   # Application and feed logs
-    ├── ioc_imports/           # Your CSV files go here
-    ├── backups/               # Automated database backups
-    └── ioc_feeds/             # Downloaded threat feed cache
-```
-
-## 🎯 Success Metrics
-
-### **Deployment Success**
-- ✅ Bot responds to `/start` command
-- ✅ IOC database initialized with sample data
-- ✅ Automated feeds downloading daily
-- ✅ Family members can use successfully
-
-### **Protection Success** 
-- 🎯 **Threats Detected** - IOC matches trigger alerts
-- 📈 **Database Growth** - Continuous threat intelligence updates
-- 👨‍👩‍👧‍👦 **Family Usage** - Regular safety checks by family members
-- 📊 **Analytics** - Hit statistics and trend analysis
-
-## 🔄 Regular Workflow
-
-### **For Administrators**
-1. **Weekly**: Check `python3 add_iocs.py --stats`
-2. **Monthly**: Review hit analytics and false positives
-3. **As Needed**: Import new threat intelligence CSV files
-4. **Ongoing**: Monitor family usage and provide guidance
-
-### **For Family Members**
-1. **Before Clicking Links**: Send to bot for safety check
-2. **Suspicious Emails**: Forward to bot for analysis
-3. **Downloaded Files**: Upload to bot before opening
-4. **Learning**: Read bot explanations about threats
-
-## 🐛 Troubleshooting
-
-### **Common Issues**
-
-#### **Bot Not Responding**
+### Test Run
 ```bash
-docker-compose ps              # Check if services are running
-docker-compose logs soc-bot    # Check bot logs
-docker-compose restart         # Restart services
+source venv/bin/activate
+python soc_agent.py
 ```
 
-#### **IOC Database Issues**
+### Install as System Service
 ```bash
-python3 add_iocs.py --stats           # Check database status
-python3 manage_iocs.py --validate     # Validate database integrity
-python3 manage_iocs.py --optimize     # Optimize performance
+sudo cp soc-agent.service /etc/systemd/system/
+sudo systemctl enable soc-agent
+sudo systemctl start soc-agent
+sudo systemctl status soc-agent
 ```
 
-#### **Import Problems**
+### Check Logs
 ```bash
-python3 custom_ioc_import.py --validate your_file.csv  # Check CSV format
-python3 add_iocs.py --interactive                      # Interactive import
-./quick_import.sh your_file.csv                        # Quick import
+sudo journalctl -u soc-agent -f
 ```
 
-### **Performance Optimization**
+## 📋 IOC Management
+
+### IOC File Formats
+
+**CSV Format** (recommended):
+```csv
+indicator,type,description,threat_type,source,confidence
+malware.com,domain,Known malware distribution,malware,threat_intel,95
+192.168.1.100,ip,Compromised internal host,botnet,internal,80
+d41d8cd98f00b204e9800998ecf8427e,md5,Empty file hash,safe,system,100
+```
+
+**Plain Text Format**:
+```
+malware.com
+192.168.1.100
+d41d8cd98f00b204e9800998ecf8427e
+# Comments start with #
+suspicious-domain.net
+```
+
+### Import IOCs
 ```bash
-# For large IOC databases
-python3 manage_iocs.py --optimize
+# Import from CSV
+python import_iocs.py threat_intel.csv "external_feed"
 
-# For memory issues
-docker-compose restart ollama
-
-# For storage issues
-python3 manage_iocs.py --cleanup 30  # Remove old backups
+# Import from text file
+python import_iocs.py indicators.txt "manual_analysis"
 ```
 
-## 🔮 Advanced Features
+### IOC Database Schema
+| Field | Type | Description |
+|-------|------|-------------|
+| `indicator` | TEXT | The actual indicator (IP, domain, hash, etc.) |
+| `type` | TEXT | Indicator type (ip, domain, md5, sha1, sha256, url) |
+| `description` | TEXT | Human-readable description |
+| `threat_type` | TEXT | Type of threat (malware, phishing, botnet, safe, etc.) |
+| `source` | TEXT | Source of the indicator |
+| `confidence` | INTEGER | Confidence level (0-100) |
 
-### **Custom Threat Feeds**
-Add your own threat intelligence sources to `ioc_feeds_config.json`
+## 💬 Using the Bot
 
-### **API Integration**
-Extend with additional threat intelligence APIs
+### Start the Bot
+1. Find your bot on Telegram (search by username)
+2. Send `/start`
+3. Use the interactive menu or send indicators directly
 
-### **Machine Learning**
-AI model learns from your specific threat landscape
+### Send Indicators
+Just type or paste any supported indicator:
+```
+https://malicious-site.com
+192.168.1.100
+malware.exe.md5hash
+suspicious-domain.net
+```
 
-### **Multi-Tenant**
-Support multiple families/organizations
+### Bot Commands
+- `/start` - Show main menu and help
+- Send any indicator - Immediate analysis
+- Use inline buttons for navigation
+
+### Bot Interface
+```
+🛡️ SOC AI Agent
+
+🔍 Analyze Indicator  📊 Analysis History
+📋 IOC Stats         ℹ️ Help
+```
+
+## 📊 Analysis Output
+
+The bot provides comprehensive analysis including:
+
+```
+🔍 Analysis Report
+Indicator: malware.com
+Type: DOMAIN
+Timestamp: 2025-06-16 15:30:45
+
+🦠 VirusTotal Analysis:
+🚨 Detection: 15/89 engines flagged as malicious
+📊 Reputation Score: -50
+
+📋 Local IOC Database:
+⚠️ Match found: malware (Confidence: 95%)
+   Source: threat_intel
+
+🤖 AI Security Analysis:
+Risk Assessment: HIGH
+This domain has been flagged by multiple security vendors...
+Recommended Actions: Block at firewall, investigate logs...
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Bot not responding:**
+```bash
+# Check if service is running
+sudo systemctl status soc-agent
+
+# Check logs
+sudo journalctl -u soc-agent -f
+```
+
+**Ollama not working:**
+```bash
+# Check Ollama status
+sudo systemctl status ollama
+
+# Test Ollama directly
+curl http://localhost:11434/api/version
+```
+
+**API rate limits:**
+- VirusTotal: 4 requests/minute (free tier)
+- AbuseIPDB: 1000 requests/day (free tier)
+
+**Memory issues on Raspberry Pi:**
+- Use smaller Ollama models: `ollama pull llama2:7b-chat`
+- Limit concurrent requests in code
+- Monitor with `htop`
+
+### Performance Optimization
+
+**For Raspberry Pi 4:**
+```bash
+# GPU memory split (if using desktop)
+echo "gpu_mem=16" | sudo tee -a /boot/config.txt
+
+# Increase swap
+sudo dphys-swapfile swapoff
+sudo sed -i 's/CONF_SWAPSIZE=100/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+```
+
+## 🔒 Security Considerations
+
+### Best Practices
+- ✅ Use `ALLOWED_USER_IDS` to restrict access
+- ✅ Keep API keys secure in `.env`
+- ✅ Run bot as non-root user
+- ✅ Regular database backups
+- ✅ Monitor logs for suspicious activity
+
+### Network Security
+```bash
+# Optional: Restrict network access
+sudo ufw enable
+sudo ufw allow ssh
+sudo ufw allow from 192.168.1.0/24 to any port 11434  # Ollama local only
+```
+
+## 📁 File Structure
+
+```
+soc-ai-agent/
+├── soc_agent.py          # Main bot application
+├── setup.py              # Installation script
+├── import_iocs.py        # IOC import utility
+├── .env                  # Configuration (create from .env.example)
+├── .env.example          # Environment template
+├── soc-agent.service     # Systemd service file
+├── soc_agent.db          # SQLite database (created automatically)
+├── README.md             # This file
+├── requirements.txt      # Python dependencies
+└── samples/
+    ├── sample_iocs.csv   # Example IOC file
+    └── indicators.txt    # Example text file
+```
+
+## 🔄 Updates and Maintenance
+
+### Update the Bot
+```bash
+cd soc-ai-agent
+git pull origin main
+source venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart soc-agent
+```
+
+### Database Backup
+```bash
+# Backup
+sqlite3 soc_agent.db ".backup backup_$(date +%Y%m%d).db"
+
+# Restore
+sqlite3 soc_agent.db ".restore backup_20250616.db"
+```
+
+### Log Rotation
+```bash
+# Add to /etc/logrotate.d/soc-agent
+/var/log/soc-agent.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 644 pi pi
+    postrotate
+        systemctl reload soc-agent
+    endscript
+}
+```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create feature branch: `git checkout -b amazing-feature`
-3. Make your changes
-4. Test on Raspberry Pi
+2. Create feature branch: `git checkout -b feature-name`
+3. Commit changes: `git commit -am 'Add feature'`
+4. Push to branch: `git push origin feature-name`
 5. Submit pull request
 
-## 📄 License
+## 📝 License
 
-This project is open source and available under the MIT License.
-
-## ⚠️ Disclaimer
-
-This tool is designed for educational and defensive security purposes. Users are responsible for complying with applicable laws and regulations. The system provides security analysis but should not be the only security measure implemented.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Support
 
-- **📖 Documentation**: Check the comprehensive guides included
-- **🐛 Issues**: Create GitHub issues for bugs or feature requests
-- **💬 Discussions**: Use GitHub discussions for questions
-- **📧 Contact**: Reach out to the maintainer for enterprise support
+- **Issues**: Open a GitHub issue
+- **Discussions**: Use GitHub Discussions
+- **Security**: Email security issues privately
+
+## 🙏 Acknowledgments
+
+- **Ollama** - Local AI inference
+- **VirusTotal** - Malware detection API
+- **AbuseIPDB** - IP reputation database
+- **python-telegram-bot** - Telegram Bot framework
 
 ---
 
-## 🎉 Ready to Deploy?
-
-**Your AI SOC Analyst Bot is the most advanced family cybersecurity solution available.**
-
-### **What You Get:**
-- 🛡️ **Enterprise-grade threat detection** for your entire family
-- 🗄️ **Custom threat intelligence** from your malware analysis
-- 🤖 **AI-powered analysis** with local privacy
-- 📱 **Family-friendly interface** that anyone can use
-- 🔄 **Automated operations** requiring zero maintenance
-- 📊 **Professional analytics** and reporting capabilities
-
-### **Installation Time:** 15 minutes
-### **Family Protection:** Immediate
-### **Maintenance Required:** None (fully automated)
-
-**🚀 Start protecting your family today with enterprise-grade cybersecurity!**
-
-```bash
-git clone <your-repo-url>
-cd ai-soc-analyst-bot
-./install.sh
-# Add your Telegram bot token to .env
-# Start protecting your family! 🛡️
-```
-
----
-
-**🛡️ Stay Safe, Stay Secure, Stay Protected!**
+**Made with ❤️ for family cybersecurity**
