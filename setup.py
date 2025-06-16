@@ -182,6 +182,7 @@ def setup_sample_iocs():
             threat_type TEXT,
             source TEXT,
             confidence INTEGER DEFAULT 50,
+            metadata TEXT DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -197,6 +198,12 @@ def setup_sample_iocs():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Add metadata column if it doesn't exist (for upgrades)
+    try:
+        cursor.execute('ALTER TABLE iocs ADD COLUMN metadata TEXT DEFAULT "{}"')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     for ioc in sample_iocs:
         cursor.execute('''
