@@ -1,48 +1,26 @@
 # SOC AI Agent - Python Dependencies
-# Compatible with Raspberry Pi 4 and Python 3.8+
+# Optimized for Raspberry Pi 4 with 8GB RAM
 
-# Telegram Bot Framework
-python-telegram-bot>=20.0,<21.0
+# Core dependencies
+python-telegram-bot==20.7
+python-dotenv==1.0.0
+requests==2.31.0
 
-# HTTP Requests
-requests>=2.28.0,<3.0.0
-urllib3>=1.26.0,<2.0.0
+# AI/ML dependencies (CPU optimized)
+transformers==4.35.2
+torch==2.1.1+cpu --find-links https://download.pytorch.org/whl/torch_stable.html
+tokenizers==0.15.0
+numpy==1.24.3
 
-# Async File Operations
-aiofiles>=22.1.0,<24.0.0
+# File analysis
+python-magic==0.4.27
 
-# Environment Configuration
-python-dotenv>=1.0.0,<2.0.0
+# Web/Network utilities  
+urllib3==2.0.7
 
-# Security & Cryptography
-cryptography>=3.4.8,<42.0.0
-
-# Additional utilities that may be needed
-# Uncomment if you need additional features
-
-# JSON handling (built-in, but explicit for clarity)
-# orjson>=3.8.0  # Faster JSON parsing
-
-# Advanced CSV parsing
-# pandas>=1.5.0  # If you need advanced CSV analysis
-
-# IP address utilities (built-in ipaddress should be sufficient)
-# ipaddress>=1.0.0  # Additional IP utilities
-
-# URL parsing (built-in urllib should be sufficient)
-# tldextract>=3.4.0  # For advanced domain parsing
-
-# Database ORM (optional, SQLite3 is built-in)
-# SQLAlchemy>=1.4.0  # If you prefer ORM over raw SQL
-
-# Caching (optional)
-# cachetools>=5.0.0  # For response caching
-
-# Monitoring and logging (optional)
-# prometheus_client>=0.15.0  # For metrics
-# structlog>=22.0.0  # For structured logging
-
-# Development dependencies (optional)
-# pytest>=7.0.0  # For testing
-# black>=22.0.0  # For code formatting
-# flake8>=5.0.0  # For linting
+# Optional: Enhanced functionality
+# Uncomment if needed
+# beautifulsoup4==4.12.2  # For web scraping
+# yara-python==4.3.1     # For YARA rule matching
+# python-whois==0.8.0    # For domain WHOIS lookup
+# geoip2==4.7.0          # For IP geolocation
