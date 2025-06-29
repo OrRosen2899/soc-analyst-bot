@@ -1,338 +1,430 @@
 #!/usr/bin/env python3
 """
-SOC AI Agent Installation Script
-Automated setup for Raspberry Pi 4
+SOC AI Agent Setup Script
+Automated installation and configuration for Raspberry Pi
 """
 
 import os
 import sys
 import subprocess
-import json
-import sqlite3
+import platform
+import shutil
 from pathlib import Path
 
-def run_command(cmd, check=True):
-    """Run shell command"""
-    print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if check and result.returncode != 0:
-        print(f"Error: {result.stderr}")
-        sys.exit(1)
-    return result
-
-def install_system_dependencies():
-    """Install system packages"""
-    print("📦 Installing system dependencies...")
-    
-    commands = [
-        "sudo apt update",
-        "sudo apt install -y python3-pip python3-venv git curl",
-        "sudo apt install -y sqlite3 libsqlite3-dev",
-        "sudo apt install -y build-essential libssl-dev libffi-dev python3-dev"
-    ]
-    
-    for cmd in commands:
-        run_command(cmd)
-
-def install_ollama():
-    """Install Ollama"""
-    print("🤖 Installing Ollama...")
-    
-    # Check if ollama is already installed
-    result = run_command("which ollama", check=False)
-    if result.returncode == 0:
-        print("✅ Ollama already installed")
-        return
-    
-    # Install Ollama
-    run_command("curl -fsSL https://ollama.com/install.sh | sh")
-    
-    # Start Ollama service
-    run_command("sudo systemctl enable ollama")
-    run_command("sudo systemctl start ollama")
-    
-    print("⏳ Waiting for Ollama to start...")
-    import time
-    time.sleep(10)
-    
-    # Pull default model
-    print("📥 Downloading AI model (this may take a while)...")
-    run_command("ollama pull llama2")
-
-def create_virtual_environment():
-    """Create Python virtual environment"""
-    print("🐍 Creating Python virtual environment...")
-    
-    if not os.path.exists("venv"):
-        run_command("python3 -m venv venv")
-    
-    # Activate venv and upgrade pip
-    run_command("./venv/bin/pip install --upgrade pip")
-
-def install_python_dependencies():
-    """Install Python packages"""
-    print("📚 Installing Python dependencies...")
-    
-    requirements = [
-        "python-telegram-bot>=20.0",
-        "requests>=2.28.0",
-        "aiofiles>=22.1.0",
-        "python-dotenv>=1.0.0",
-        "cryptography>=3.4.8",
-        "urllib3>=1.26.0"
-    ]
-    
-    for req in requirements:
-        run_command(f"./venv/bin/pip install {req}")
-
-def setup_configuration():
-    """Setup configuration files"""
-    print("⚙️ Setting up configuration...")
-    
-    if not os.path.exists(".env"):
-        print("Creating .env file...")
-        env_content = """# SOC AI Agent Configuration
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-VIRUSTOTAL_API_KEY=your_virustotal_api_key_here
-ABUSEDB_API_KEY=your_abuseipdb_api_key_here
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama2
-DATABASE_PATH=soc_agent.db
-ALLOWED_USER_IDS=
-LOG_LEVEL=INFO
-"""
-        with open(".env", "w") as f:
-            f.write(env_content)
+class SOCAgentSetup:
+    def __init__(self):
+        self.python_version = sys.version_info
+        self.is_raspberry_pi = self.detect_raspberry_pi()
+        self.base_dir = Path.cwd()
         
-        print("⚠️  Please edit .env file with your API keys and configuration")
-
-def create_service_file():
-    """Create systemd service file"""
-    print("🔧 Creating systemd service...")
+    def detect_raspberry_pi(self):
+        """Detect if running on Raspberry Pi"""
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                if 'Raspberry Pi' in f.read():
+                    return True
+        except:
+            pass
+        return False
     
-    current_dir = os.getcwd()
-    service_content = f"""[Unit]
-Description=SOC AI Agent Telegram Bot
-After=network.target ollama.service
-Requires=ollama.service
+    def check_requirements(self):
+        """Check system requirements"""
+        print("🔍 Checking system requirements...")
+        
+        # Check Python version
+        if self.python_version < (3, 8):
+            print("❌ Python 3.8+ required. Current version:", sys.version)
+            return False
+        else:
+            print("✅ Python version:", sys.version.split()[0])
+        
+        # Check if running on Raspberry Pi
+        if self.is_raspberry_pi:
+            print("✅ Raspberry Pi detected")
+        else:
+            print("⚠️  Not running on Raspberry Pi - some optimizations may not apply")
+        
+        # Check available memory
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                meminfo = f.read()
+                for line in meminfo.split('\n'):
+                    if 'MemTotal' in line:
+                        mem_kb = int(line.split()[1])
+                        mem_gb = mem_kb / 1024 / 1024
+                        print(f"✅ Available RAM: {mem_gb:.1f}GB")
+                        if mem_gb < 4:
+                            print("⚠️  Low memory detected. Consider enabling swap.")
+                        break
+        except:
+            print("⚠️  Could not check memory")
+        
+        return True
+    
+    def install_system_dependencies(self):
+        """Install system-level dependencies"""
+        print("\n📦 Installing system dependencies...")
+        
+        if self.is_raspberry_pi:
+            # Update package list
+            subprocess.run(['sudo', 'apt', 'update'], check=True)
+            
+            # Install required packages
+            packages = [
+                'python3-pip',
+                'python3-venv',
+                'libmagic1',
+                'sqlite3',
+                'build-essential',
+                'python3-dev',
+                'libffi-dev',
+                'libssl-dev',
+                'git'
+            ]
+            
+            for package in packages:
+                print(f"Installing {package}...")
+                try:
+                    subprocess.run(['sudo', 'apt', 'install', '-y', package], 
+                                 check=True, capture_output=True)
+                    print(f"✅ {package} installed")
+                except subprocess.CalledProcessError:
+                    print(f"❌ Failed to install {package}")
+        else:
+            print("ℹ️  Please ensure the following are installed:")
+            print("  - python3-pip")
+            print("  - libmagic")
+            print("  - sqlite3")
+    
+    def create_virtual_environment(self):
+        """Create Python virtual environment"""
+        print("\n🐍 Creating virtual environment...")
+        
+        venv_path = self.base_dir / 'soc_venv'
+        
+        if venv_path.exists():
+            print("ℹ️  Virtual environment already exists")
+            return str(venv_path)
+        
+        try:
+            subprocess.run([sys.executable, '-m', 'venv', str(venv_path)], check=True)
+            print("✅ Virtual environment created")
+            return str(venv_path)
+        except subprocess.CalledProcessError:
+            print("❌ Failed to create virtual environment")
+            return None
+    
+    def install_python_dependencies(self, venv_path):
+        """Install Python dependencies"""
+        print("\n📚 Installing Python dependencies...")
+        
+        if self.is_raspberry_pi:
+            pip_path = os.path.join(venv_path, 'bin', 'pip')
+        else:
+            pip_path = os.path.join(venv_path, 'Scripts', 'pip')
+        
+        # Create requirements.txt
+        requirements = [
+            "python-telegram-bot==20.7",
+            "python-dotenv==1.0.0",
+            "requests==2.31.0",
+            "transformers==4.35.2",
+            "torch==2.1.1+cpu",
+            "tokenizers==0.15.0",
+            "python-magic==0.4.27",
+            "sqlite3",  # Built-in, but just for reference
+            "numpy==1.24.3",
+            "asyncio",  # Built-in
+            "pathlib",  # Built-in
+            "hashlib",  # Built-in
+            "base64",   # Built-in
+            "urllib3==2.0.7"
+        ]
+        
+        # Write requirements.txt
+        with open('requirements.txt', 'w') as f:
+            for req in requirements:
+                if not req.endswith('Built-in'):
+                    f.write(req + '\n')
+        
+        # Install requirements
+        try:
+            # Upgrade pip first
+            subprocess.run([pip_path, 'install', '--upgrade', 'pip'], check=True)
+            
+            # Install PyTorch CPU version for Raspberry Pi
+            if self.is_raspberry_pi:
+                subprocess.run([
+                    pip_path, 'install', 'torch==2.1.1+cpu', 
+                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'
+                ], check=True)
+            
+            # Install other requirements
+            subprocess.run([pip_path, 'install', '-r', 'requirements.txt'], check=True)
+            print("✅ Python dependencies installed")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to install dependencies: {e}")
+            return False
+        
+        return True
+    
+    def create_directory_structure(self):
+        """Create necessary directories"""
+        print("\n📁 Creating directory structure...")
+        
+        directories = [
+            'temp',
+            'logs',
+            'data',
+            'models'
+        ]
+        
+        for directory in directories:
+            dir_path = self.base_dir / directory
+            dir_path.mkdir(exist_ok=True)
+            print(f"✅ Created {directory}/ directory")
+    
+    def setup_environment_file(self):
+        """Setup environment configuration"""
+        print("\n⚙️  Setting up environment configuration...")
+        
+        env_file = self.base_dir / '.env'
+        
+        if env_file.exists():
+            print("ℹ️  .env file already exists")
+            return
+        
+        # Create .env from template
+        env_template = """# SOC AI Agent Configuration
+# Fill in your actual values below
+
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+
+# VirusTotal API Configuration  
+VIRUSTOTAL_API_KEY=your_virustotal_api_key_here
+
+# AbuseDB API Configuration
+ABUSEDB_API_KEY=your_abusedb_api_key_here
+
+# Authorized Users (Telegram User IDs - comma separated)
+# To get your Telegram user ID, message @userinfobot on Telegram
+AUTHORIZED_USERS=123456789,987654321
+
+# Configuration
+DATABASE_PATH=soc_database.db
+LOG_LEVEL=INFO
+LOG_FILE=logs/soc_agent.log
+ENABLE_AUTO_DETECTION=true
+ENABLE_AI_ANALYSIS=true
+MAX_FILE_SIZE=100MB
+"""
+        
+        with open(env_file, 'w') as f:
+            f.write(env_template)
+        
+        print("✅ Created .env template file")
+        print("⚠️  Please edit .env file with your API keys and user IDs")
+    
+    def create_systemd_service(self):
+        """Create systemd service for auto-start"""
+        if not self.is_raspberry_pi:
+            print("ℹ️  Systemd service creation skipped (not on Raspberry Pi)")
+            return
+        
+        print("\n🔧 Creating systemd service...")
+        
+        service_content = f"""[Unit]
+Description=SOC AI Agent
+After=network.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory={current_dir}
-Environment=PATH={current_dir}/venv/bin
-ExecStart={current_dir}/venv/bin/python {current_dir}/soc_agent.py
+WorkingDirectory={self.base_dir}
+Environment=PATH={self.base_dir}/soc_venv/bin
+ExecStart={self.base_dir}/soc_venv/bin/python {self.base_dir}/soc_agent.py
 Restart=always
 RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 """
-    
-    service_path = "/etc/systemd/system/soc-agent.service"
-    with open("soc-agent.service", "w") as f:
-        f.write(service_content)
-    
-    print(f"Service file created. To install:")
-    print(f"sudo cp soc-agent.service {service_path}")
-    print("sudo systemctl enable soc-agent")
-    print("sudo systemctl start soc-agent")
-
-def setup_sample_iocs():
-    """Create sample IOC database"""
-    print("📋 Setting up sample IOC database...")
-    
-    sample_iocs = [
-        {
-            "indicator": "127.0.0.1",
-            "type": "ip",
-            "description": "Localhost - Safe IP",
-            "threat_type": "safe",
-            "source": "system",
-            "confidence": 100
-        },
-        {
-            "indicator": "malware.com",
-            "type": "domain",
-            "description": "Known malware distribution domain",
-            "threat_type": "malware",
-            "source": "threat_intel",
-            "confidence": 95
-        },
-        {
-            "indicator": "d41d8cd98f00b204e9800998ecf8427e",
-            "type": "md5",
-            "description": "Empty file hash",
-            "threat_type": "safe",
-            "source": "system",
-            "confidence": 100
-        }
-    ]
-    
-    # Initialize database
-    conn = sqlite3.connect("soc_agent.db")
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS iocs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            indicator TEXT UNIQUE NOT NULL,
-            type TEXT NOT NULL,
-            description TEXT,
-            threat_type TEXT,
-            source TEXT,
-            confidence INTEGER DEFAULT 50,
-            metadata TEXT DEFAULT '{}',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS analysis_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            indicator TEXT NOT NULL,
-            analysis_type TEXT NOT NULL,
-            results TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Add metadata column if it doesn't exist (for upgrades)
-    try:
-        cursor.execute('ALTER TABLE iocs ADD COLUMN metadata TEXT DEFAULT "{}"')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    for ioc in sample_iocs:
-        cursor.execute('''
-            INSERT OR REPLACE INTO iocs 
-            (indicator, type, description, threat_type, source, confidence)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (ioc['indicator'], ioc['type'], ioc['description'], 
-              ioc['threat_type'], ioc['source'], ioc['confidence']))
-    
-    conn.commit()
-    conn.close()
-    
-    print("✅ Sample IOCs loaded")
-
-def create_ioc_import_script():
-    """Create IOC import utility"""
-    print("📥 Creating IOC import utility...")
-    
-    import_script = '''#!/usr/bin/env python3
-"""
-IOC Import Utility
-Usage: python import_iocs.py <file_path> [source_name]
-"""
-
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from soc_agent import SOCAgent
-
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python import_iocs.py <file_path> [source_name]")
-        sys.exit(1)
-    
-    file_path = sys.argv[1]
-    source_name = sys.argv[2] if len(sys.argv) > 2 else "manual_import"
-    
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        sys.exit(1)
-    
-    agent = SOCAgent()
-    count = agent.load_iocs_from_file(file_path, source_name)
-    print(f"✅ Imported {count} IOCs from {file_path}")
-
-if __name__ == "__main__":
-    main()
-'''
-    
-    with open("import_iocs.py", "w") as f:
-        f.write(import_script)
-    
-    os.chmod("import_iocs.py", 0o755)
-
-def check_requirements():
-    """Check system requirements"""
-    print("🔍 Checking system requirements...")
-    
-    # Check Python version
-    if sys.version_info < (3, 8):
-        print("❌ Python 3.8+ required")
-        sys.exit(1)
-    
-    # Check available memory
-    try:
-        with open('/proc/meminfo', 'r') as f:
-            meminfo = f.read()
-        mem_total_kb = int([line for line in meminfo.split('\n') if 'MemTotal' in line][0].split()[1])
-        mem_total_gb = mem_total_kb / 1024 / 1024
         
-        if mem_total_gb < 4:
-            print("⚠️  Warning: Less than 4GB RAM detected. Performance may be limited.")
+        service_file = '/tmp/soc-agent.service'
+        with open(service_file, 'w') as f:
+            f.write(service_content)
+        
+        try:
+            # Copy service file
+            subprocess.run(['sudo', 'cp', service_file, '/etc/systemd/system/'], check=True)
+            
+            # Reload systemd and enable service
+            subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
+            subprocess.run(['sudo', 'systemctl', 'enable', 'soc-agent'], check=True)
+            
+            print("✅ Systemd service created and enabled")
+            print("ℹ️  Use 'sudo systemctl start soc-agent' to start the service")
+            print("ℹ️  Use 'sudo systemctl status soc-agent' to check status")
+            
+        except subprocess.CalledProcessError:
+            print("❌ Failed to create systemd service")
+    
+    def download_ai_models(self, venv_path):
+        """Download and cache AI models"""
+        print("\n🤖 Downloading AI models...")
+        
+        if self.is_raspberry_pi:
+            python_path = os.path.join(venv_path, 'bin', 'python')
         else:
-            print(f"✅ Memory check passed: {mem_total_gb:.1f}GB")
-    except:
-        print("⚠️  Could not check memory")
+            python_path = os.path.join(venv_path, 'Scripts', 'python')
+        
+        download_script = '''
+import os
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
+
+print("Downloading DistilBERT model...")
+try:
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+    model = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+    print("✅ DistilBERT model downloaded")
+except Exception as e:
+    print(f"❌ Error downloading DistilBERT: {e}")
+
+print("Downloading DistilGPT2 model...")
+try:
+    from transformers import GPT2LMHeadModel, GPT2Tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained("distilgpt2")
+    model = GPT2LMHeadModel.from_pretrained("distilgpt2")
+    print("✅ DistilGPT2 model downloaded")
+except Exception as e:
+    print(f"❌ Error downloading DistilGPT2: {e}")
+
+print("Models cached successfully!")
+'''
+        
+        try:
+            result = subprocess.run([python_path, '-c', download_script], 
+                                  capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print("✅ AI models downloaded and cached")
+            else:
+                print("⚠️  Some models may not have downloaded correctly")
+                print(result.stderr)
+        except subprocess.TimeoutExpired:
+            print("⚠️  Model download timed out - they will download on first use")
+        except Exception as e:
+            print(f"⚠️  Model download failed: {e}")
     
-    # Check architecture
-    import platform
-    arch = platform.machine()
-    if arch not in ['aarch64', 'armv7l', 'x86_64']:
-        print(f"⚠️  Untested architecture: {arch}")
-    else:
-        print(f"✅ Architecture: {arch}")
+    def create_startup_script(self, venv_path):
+        """Create startup script"""
+        print("\n📜 Creating startup script...")
+        
+        if self.is_raspberry_pi:
+            python_path = os.path.join(venv_path, 'bin', 'python')
+        else:
+            python_path = os.path.join(venv_path, 'Scripts', 'python')
+        
+        startup_script = f"""#!/bin/bash
+# SOC AI Agent Startup Script
+
+echo "Starting SOC AI Agent..."
+
+# Activate virtual environment and run
+cd {self.base_dir}
+{python_path} soc_agent.py
+"""
+        
+        script_path = self.base_dir / 'start_soc_agent.sh'
+        with open(script_path, 'w') as f:
+            f.write(startup_script)
+        
+        # Make executable
+        os.chmod(script_path, 0o755)
+        
+        print("✅ Startup script created: start_soc_agent.sh")
+    
+    def run_setup(self):
+        """Run complete setup process"""
+        print("🛡️  SOC AI Agent Setup Starting...\n")
+        
+        # Check requirements
+        if not self.check_requirements():
+            print("❌ Requirements check failed")
+            return False
+        
+        # Install system dependencies
+        try:
+            self.install_system_dependencies()
+        except Exception as e:
+            print(f"⚠️  System dependencies installation failed: {e}")
+        
+        # Create virtual environment
+        venv_path = self.create_virtual_environment()
+        if not venv_path:
+            print("❌ Setup failed at virtual environment creation")
+            return False
+        
+        # Install Python dependencies
+        if not self.install_python_dependencies(venv_path):
+            print("❌ Setup failed at Python dependencies installation")
+            return False
+        
+        # Create directory structure
+        self.create_directory_structure()
+        
+        # Setup environment file
+        self.setup_environment_file()
+        
+        # Download AI models
+        self.download_ai_models(venv_path)
+        
+        # Create startup script
+        self.create_startup_script(venv_path)
+        
+        # Create systemd service (Raspberry Pi only)
+        self.create_systemd_service()
+        
+        print("\n✅ Setup completed successfully!")
+        print("\n📋 Next steps:")
+        print("1. Edit .env file with your API keys and Telegram user IDs")
+        print("2. Run: ./start_soc_agent.sh")
+        print("3. Test the bot by messaging it on Telegram")
+        
+        if self.is_raspberry_pi:
+            print("4. (Optional) Start as service: sudo systemctl start soc-agent")
+        
+        print("\n🔗 Required API keys:")
+        print("• Telegram Bot Token: https://t.me/BotFather")
+        print("• VirusTotal API: https://www.virustotal.com/gui/my-apikey")
+        print("• AbuseDB API: https://www.abuseipdb.com/api")
+        
+        return True
 
 def main():
-    """Main installation function"""
-    print("🛡️  SOC AI Agent Installation")
-    print("=============================")
+    """Main setup function"""
+    setup = SOCAgentSetup()
+    
+    print("SOC AI Agent - Automated Setup")
+    print("=" * 40)
     
     try:
-        check_requirements()
-        install_system_dependencies()
-        create_virtual_environment()
-        install_python_dependencies()
-        install_ollama()
-        setup_configuration()
-        setup_sample_iocs()
-        create_ioc_import_script()
-        create_service_file()
-        
-        print("\n✅ Installation completed successfully!")
-        print("\n📝 Next steps:")
-        print("1. Edit .env file with your API keys:")
-        print("   - Get Telegram bot token from @BotFather")
-        print("   - Get VirusTotal API key from virustotal.com")
-        print("   - Get AbuseIPDB API key from abuseipdb.com")
-        print("   - Add your Telegram user ID to ALLOWED_USER_IDS")
-        
-        print("\n2. Test the installation:")
-        print("   ./venv/bin/python soc_agent.py")
-        
-        print("\n3. Install as service (optional):")
-        print("   sudo cp soc-agent.service /etc/systemd/system/")
-        print("   sudo systemctl enable soc-agent")
-        print("   sudo systemctl start soc-agent")
-        
-        print("\n4. Import IOCs:")
-        print("   python import_iocs.py your_ioc_file.csv")
-        
-        print("\n🎉 Your SOC AI Agent is ready!")
-        
+        success = setup.run_setup()
+        if success:
+            print("\n🎉 Setup completed! Your SOC AI Agent is ready.")
+        else:
+            print("\n❌ Setup failed. Please check the errors above.")
+            return 1
     except KeyboardInterrupt:
-        print("\n❌ Installation cancelled")
-        sys.exit(1)
+        print("\n⚠️  Setup interrupted by user")
+        return 1
     except Exception as e:
-        print(f"\n❌ Installation failed: {e}")
-        sys.exit(1)
+        print(f"\n❌ Unexpected error during setup: {e}")
+        return 1
+    
+    return 0
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    sys.exit(main())
