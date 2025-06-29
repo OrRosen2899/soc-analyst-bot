@@ -1,0 +1,72 @@
+[
+  {
+    "indicator": "malicious-example.com",
+    "type": "domain",
+    "threat_level": "high",
+    "description": "Known phishing domain targeting financial institutions",
+    "source": "ThreatIntel Feed"
+  },
+  {
+    "indicator": "suspicious-site.net",
+    "type": "domain", 
+    "threat_level": "medium",
+    "description": "Domain associated with malware distribution",
+    "source": "Internal SOC"
+  },
+  {
+    "indicator": "http://bad-url.com/malware.exe",
+    "type": "url",
+    "threat_level": "critical",
+    "description": "Direct malware download URL",
+    "source": "Incident Response"
+  },
+  {
+    "indicator": "192.168.100.50",
+    "type": "ip",
+    "threat_level": "high",
+    "description": "Command and control server IP",
+    "source": "Network Monitoring"
+  },
+  {
+    "indicator": "203.0.113.10",
+    "type": "ip",
+    "threat_level": "medium", 
+    "description": "IP showing suspicious scanning activity",
+    "source": "Honeypot"
+  },
+  {
+    "indicator": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
+    "type": "hash",
+    "threat_level": "critical",
+    "description": "SHA256 hash of ransomware binary",
+    "source": "Malware Analysis"
+  },
+  {
+    "indicator": "d41d8cd98f00b204e9800998ecf8427e",
+    "type": "hash", 
+    "threat_level": "medium",
+    "description": "MD5 hash of suspicious executable",
+    "source": "Endpoint Detection"
+  },
+  {
+    "indicator": "phishing@fake-bank.com",
+    "type": "email",
+    "threat_level": "high",
+    "description": "Email address used in banking phishing campaign",
+    "source": "Email Security"
+  },
+  {
+    "indicator": "attack@malware-c2.org", 
+    "type": "email",
+    "threat_level": "critical",
+    "description": "Email associated with APT group communications",
+    "source": "Threat Intelligence"
+  },
+  {
+    "indicator": "trojan-downloader.exe",
+    "type": "filename",
+    "threat_level": "high", 
+    "description": "Common trojan downloader filename",
+    "source": "Behavioral Analysis"
+  }
+]
